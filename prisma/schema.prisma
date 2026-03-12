@@ -1,0 +1,447 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum EventType {
+  TICKET
+  FORM
+}
+
+enum EventStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum EventCategory {
+  CONCERT
+  PRODUCT_PREORDER
+  FAN_MEETING
+  OTHER
+}
+
+enum BookingStatus {
+  PENDING_APPROVAL
+  IN_PROGRESS
+  READY_FOR_FULFILLMENT
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+}
+
+enum PaymentSlipType {
+  DEPOSIT
+  TICKET
+  PRODUCT
+  SERVICE_FEE
+  OTHER
+}
+
+enum PaymentSlipStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum FulfillmentType {
+  ETICKET
+  PICKUP
+  DELIVERY
+}
+
+enum DeliveryStatus {
+  NOT_STARTED
+  WAITING_PICKUP
+  READY_FOR_PICKUP
+  PICKED_UP
+  WAITING_DELIVERY
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum DepositTransactionType {
+  HELD
+  USED
+  FORFEITED
+  REFUNDED
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum InsightMode {
+  TICKET
+  FORM
+}
+
+model User {
+  id         Int       @id @default(autoincrement())
+  email      String    @unique
+  password   String
+  firstName  String
+  lastName   String
+  line       String?
+  phone      String?
+  role       AdminRole @default(ADMIN)
+  lastLogin  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  accounts   Account[]
+  sessions   Session[]
+  bookings   Booking[]
+  activities ActivityLog[]
+  paymentSlipsReviewed PaymentSlip[] @relation("reviewer")
+  statusLogsChanged    BookingStatusLog[]
+  refundsProcessed     RefundRequest[]
+
+  @@map("users")
+}
+
+model Account {
+  id                Int     @id @default(autoincrement())
+  userId            Int
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           Int      @id @default(autoincrement())
+  sessionToken String   @unique
+  userId       Int
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  fullName  String
+  nickname  String?
+  email     String?
+  phone     String?
+  lineId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings  Booking[]
+
+  @@map("customers")
+}
+
+model Event {
+  id              Int           @id @default(autoincrement())
+  name            String
+  type            EventType
+  category        EventCategory @default(OTHER)
+  description     String?
+  posterUrl       String?
+  remarks         String?
+  status          EventStatus   @default(DRAFT)
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean       @default(true)
+  createdBy       Int
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  serviceFee      Float?
+  depositRate     Float?
+  serviceFeeFixed Float?
+
+  showtimes    EventShowtime[]
+  customFields EventCustomField[]
+  bookings     Booking[]
+  insights     EventInsight[]
+  ticketZones  TicketZone[]
+  deposits     DepositTransaction[]
+
+  @@map("events")
+}
+
+model EventShowtime {
+  id        Int      @id @default(autoincrement())
+  eventId   Int
+  startsAt  DateTime
+  endsAt    DateTime
+  venue     String?
+  capacity  Int
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ticketZones TicketZone[]
+
+  @@map("event_showtimes")
+}
+
+model TicketZone {
+  id           Int   @id @default(autoincrement())
+  eventId      Int
+  showtimeId   Int
+  name         String
+  price        Float
+  serviceFee   Float
+  capacity     Int
+  remainingCap Int   @default(0)
+
+  event    Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  showtime EventShowtime @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_zones")
+}
+
+model EventCustomField {
+  id        Int         @id @default(autoincrement())
+  eventId   Int
+  label     String
+  mode      InsightMode
+  required  Boolean     @default(false)
+  options   Json?
+  deleted   Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("event_custom_fields")
+}
+
+model EventInsight {
+  id         Int      @id @default(autoincrement())
+  eventId    Int
+  title      String
+  valueType  String
+  isRequired Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("event_insights")
+}
+
+model Booking {
+  id              Int           @id @default(autoincrement())
+  queueCode       String        @unique
+  bookingCode     String        @unique
+  eventId         Int
+  customerId      Int
+  assignedAdminId Int?
+  status          BookingStatus @default(PENDING_APPROVAL)
+  paymentStatus   PaymentStatus @default(UNPAID)
+  amount          Float         @default(0)
+  serviceFee      Float         @default(0)
+  shippingFee     Float         @default(0)
+  vatAmount       Float         @default(0)
+  depositPaid     Float         @default(0)
+  totalPaid       Float         @default(0)
+  refundAmount    Float         @default(0)
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  event          Event              @relation(fields: [eventId], references: [id])
+  customer       Customer           @relation(fields: [customerId], references: [id])
+  user           User?              @relation(fields: [assignedAdminId], references: [id])
+  paymentSlips   PaymentSlip[]
+  fulfillment    Fulfillment?
+  statusLogs     BookingStatusLog[]
+  billingRecord  BillingRecord?
+  refunds        RefundRequest[]
+  deposits       DepositTransaction[]
+  formSubmission FormSubmission?
+
+  @@map("bookings")
+}
+
+model PaymentSlip {
+  id           Int               @id @default(autoincrement())
+  bookingId    Int
+  reviewerId   Int?
+  type         PaymentSlipType
+  status       PaymentSlipStatus @default(PENDING)
+  systemAmount Float
+  slipAmount   Float
+  imageUrl     String
+  reviewedAt   DateTime?
+  notes        String?
+  createdAt    DateTime          @default(now())
+
+  booking  Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewer User?          @relation("reviewer", fields: [reviewerId], references: [id])
+  refunds  RefundRequest[]
+
+  @@map("payment_slips")
+}
+
+model BillingRecord {
+  id            Int           @id @default(autoincrement())
+  bookingId     Int           @unique
+  billNumber    String        @unique
+  subtotal      Float         @default(0)
+  serviceFee    Float         @default(0)
+  shippingFee   Float         @default(0)
+  vatRate       Float         @default(0.07)
+  vatAmount     Float         @default(0)
+  totalDue      Float         @default(0)
+  paymentStatus PaymentStatus @default(UNPAID)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("billing_records")
+}
+
+model DepositTransaction {
+  id        Int                    @id @default(autoincrement())
+  bookingId Int?
+  eventId   Int?
+  type      DepositTransactionType
+  amount    Float
+  notes     String?
+  createdAt DateTime               @default(now())
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  event   Event?   @relation(fields: [eventId], references: [id])
+
+  @@map("deposit_transactions")
+}
+
+model RefundRequest {
+  id            Int          @id @default(autoincrement())
+  bookingId     Int
+  paymentSlipId Int?
+  processedById Int?
+  nickname      String?
+  bookingRef    String?
+  bankName      String
+  accountNumber String
+  accountType   String?
+  accountHolder String
+  amount        Float
+  status        RefundStatus @default(REQUESTED)
+  reason        String?
+  requestedAt   DateTime     @default(now())
+  processedAt   DateTime?
+
+  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  paymentSlip PaymentSlip? @relation(fields: [paymentSlipId], references: [id])
+  processedBy User?        @relation(fields: [processedById], references: [id])
+
+  @@map("refund_requests")
+}
+
+model Fulfillment {
+  id              Int             @id @default(autoincrement())
+  bookingId       Int             @unique
+  type            FulfillmentType
+  deliveryStatus  DeliveryStatus  @default(NOT_STARTED)
+  pickupDateTime  DateTime?
+  pickupLocation  String?
+  qrCode          String?
+  shippingAddress String?
+  shippingCity    String?
+  shippingPostal  String?
+  recipientName   String?
+  recipientPhone  String?
+  trackingNumber  String?
+  shippingFee     Float?          @default(0)
+  serviceFee      Float?          @default(0)
+  vatAmount       Float?          @default(0)
+  totalCharge     Float?          @default(0)
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("fulfillments")
+}
+
+model BookingStatusLog {
+  id        Int           @id @default(autoincrement())
+  bookingId Int
+  changedBy Int
+  status    BookingStatus
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  admin   User    @relation(fields: [changedBy], references: [id])
+
+  @@map("booking_status_logs")
+}
+
+model ActivityLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  entityType String
+  entityId   Int?
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("activity_logs")
+}
+
+model FormSubmission {
+  id          Int      @id @default(autoincrement())
+  bookingId   Int      @unique
+  formData    Json
+  submittedAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("form_submissions")
+}
