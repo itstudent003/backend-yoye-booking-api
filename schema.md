@@ -28,31 +28,6 @@ Determines how an event collects attendee information.
 
 ---
 
-### `EventStatus`
-Lifecycle status of an event.
-
-| Value       | Description                                        |
-|-------------|----------------------------------------------------|
-| `DRAFT`     | Event is being configured, not yet visible         |
-| `ACTIVE`    | Event is live and accepting bookings               |
-| `PAUSED`    | Temporarily halted, not accepting new bookings     |
-| `COMPLETED` | Event has concluded                                |
-| `CANCELLED` | Event was cancelled                                |
-
----
-
-### `EventCategory`
-Categorises the type of event for filtering and display.
-
-| Value             | Description                  |
-|-------------------|------------------------------|
-| `CONCERT`         | Live music or performance    |
-| `PRODUCT_PREORDER`| Product pre-order campaign   |
-| `FAN_MEETING`     | Fan meet-and-greet event     |
-| `OTHER`           | Uncategorised event          |
-
----
-
 ### `BookingStatus`
 Tracks the processing state of a booking.
 
@@ -259,12 +234,11 @@ An event that customers can book tickets or register for.
 |------------------|---------------|---------------------------------------------------|
 | `id`             | String        | CUID primary key                                  |
 | `name`           | String        | Display name of the event                         |
-| `type`           | EventType     | `TICKET` or `FORM`                                |
-| `category`       | EventCategory | Event category; defaults to `OTHER`               |
+| `type`           | EventType     | `TICKET` or `FORM`                                |`OTHER`               |
 | `description`    | String?       | Full description text                             |
 | `posterUrl`      | String?       | URL to the event poster image                     |
 | `remarks`        | String?       | Internal admin notes                              |
-| `status`         | EventStatus   | Lifecycle status; defaults to `DRAFT`             |
+| `status`         | Boolean   | Lifecycle status; defaults to `True`             |
 | `startDate`      | DateTime      | Event start date/time                             |
 | `endDate`        | DateTime      | Event end date/time                               |
 | `isActive`       | Boolean       | Whether the event is active; defaults to `true`   |

@@ -18,21 +18,6 @@ enum EventType {
   FORM
 }
 
-enum EventStatus {
-  DRAFT
-  ACTIVE
-  PAUSED
-  COMPLETED
-  CANCELLED
-}
-
-enum EventCategory {
-  CONCERT
-  PRODUCT_PREORDER
-  FAN_MEETING
-  OTHER
-}
-
 enum BookingStatus {
   PENDING_APPROVAL
   IN_PROGRESS
@@ -94,11 +79,6 @@ enum RefundStatus {
   PAID
 }
 
-enum InsightMode {
-  TICKET
-  FORM
-}
-
 model User {
   id         Int       @id @default(autoincrement())
   email      String    @unique
@@ -119,6 +99,7 @@ model User {
   paymentSlipsReviewed PaymentSlip[] @relation("reviewer")
   statusLogsChanged    BookingStatusLog[]
   refundsProcessed     RefundRequest[]
+
 
   @@map("users")
 }
@@ -178,94 +159,76 @@ model Customer {
 }
 
 model Event {
-  id              Int           @id @default(autoincrement())
-  name            String
-  type            EventType
-  category        EventCategory @default(OTHER)
-  description     String?
-  posterUrl       String?
-  remarks         String?
-  status          EventStatus   @default(DRAFT)
-  startDate       DateTime
-  endDate         DateTime
-  isActive        Boolean       @default(true)
-  createdBy       Int
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  serviceFee      Float?
-  depositRate     Float?
-  serviceFeeFixed Float?
-
-  showtimes    EventShowtime[]
-  customFields EventCustomField[]
-  bookings     Booking[]
-  insights     EventInsight[]
-  ticketZones  TicketZone[]
-  deposits     DepositTransaction[]
-
-  @@map("events")
-}
-
-model EventShowtime {
-  id        Int      @id @default(autoincrement())
-  eventId   Int
-  startsAt  DateTime
-  endsAt    DateTime
-  venue     String?
-  capacity  Int
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  ticketZones TicketZone[]
-
-  @@map("event_showtimes")
-}
-
-model TicketZone {
-  id           Int   @id @default(autoincrement())
-  eventId      Int
-  showtimeId   Int
+  id           Int      @id @default(autoincrement())
   name         String
-  price        Float
-  serviceFee   Float
-  capacity     Int
-  remainingCap Int   @default(0)
+  notes        String?
+  posterUrl    String?
+  posterImage  Bytes?
+  type         EventType
 
-  event    Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  showtime EventShowtime @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  eventDate    DateTime?
 
-  @@map("ticket_zones")
+  feePerEntry  Decimal?
+  capacity     Int?
+
+  isActive     Boolean  @default(true)
+  status       Boolean  @default(true)
+
+  // relations
+  showRounds       ShowRound[]
+  deepInfoFields   DeepInfoField[]
+  bookings         Booking[]
+  deposits         DepositTransaction[]
+
+  // audit
+  createdAt   DateTime  @default(now())
+  createdBy   String?
+  updatedAt   DateTime  @updatedAt
+  updatedBy   String?
+  deletedAt   DateTime?
+  deletedBy   String?
 }
 
-model EventCustomField {
-  id        Int         @id @default(autoincrement())
+model ShowRound {
+  id        Int      @id @default(autoincrement())
+  name      String
+  date      DateTime
+  time      String
+
   eventId   Int
-  label     String
-  mode      InsightMode
-  required  Boolean     @default(false)
-  options   Json?
-  deleted   Boolean     @default(false)
-  createdAt DateTime    @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  zones     Zone[]
 
-  @@map("event_custom_fields")
+  createdAt DateTime @default(now())
 }
 
-model EventInsight {
+model Zone {
+  id        Int      @id @default(autoincrement())
+  name      String
+
+  price     Decimal
+  fee       Decimal
+  capacity  Int
+
+  roundId   Int
+  round     ShowRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model DeepInfoField {
   id         Int      @id @default(autoincrement())
-  eventId    Int
-  title      String
-  valueType  String
+  otherCode  String
+  label      String
   isRequired Boolean  @default(false)
+
+  eventId    Int
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
   createdAt  DateTime @default(now())
-
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@map("event_insights")
 }
+
 
 model Booking {
   id              Int           @id @default(autoincrement())
