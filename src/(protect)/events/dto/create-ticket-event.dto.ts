@@ -68,7 +68,7 @@ export class CreateTicketEventDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: 'data:image/jpeg;base64,/9j/4AAQ...', description: 'Poster image as Base64 string' })
+  @ApiPropertyOptional({ description: 'Poster image as base64 string or file upload' })
   @IsOptional()
   @IsString()
   posterImage?: string;

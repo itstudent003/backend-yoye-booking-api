@@ -31,14 +31,63 @@ Determines how an event collects attendee information.
 ### `BookingStatus`
 Tracks the processing state of a booking.
 
-| Value                   | Description                                          |
-|-------------------------|------------------------------------------------------|
-| `PENDING_APPROVAL`      | Newly submitted, awaiting admin review               |
-| `IN_PROGRESS`           | Being processed by admin                             |
-| `READY_FOR_FULFILLMENT` | Payment confirmed, ready to issue ticket/ship        |
-| `COMPLETED`             | Fully processed and delivered                        |
-| `CANCELLED`             | Booking was cancelled                                |
-| `REFUNDED`              | Payment has been refunded                            |
+**คิว**
+
+| Value                      | Description                          |
+|----------------------------|--------------------------------------|
+| `WAITING_QUEUE_APPROVAL`   | 1. รอแอดมินอนุมัติคิว               |
+| `WAITING_DEPOSIT_TRANSFER` | 2. รอโอนมัดจำ                        |
+| `WAITING_DEPOSIT_VERIFY`   | 3. รอตรวจสลิปมัดจำ                  |
+| `QUEUE_BOOKED`             | 4. จองคิวสำเร็จ                      |
+| `WAITING_BOOKING_INFO`     | 5. รอกรอกข้อมูลจอง                  |
+| `TRANSFERRING_TICKET`      | 6. โอนค่าบัตร (กรณีฝากร้าน)        |
+| `CONFIRMING_TICKET`        | 7. ยืนยันโอนค่าบัตร                 |
+| `WAITING_ADMIN_CONFIRM`    | 8. รอแอดมินยืนยันข้อมูล             |
+| `READY_TO_BOOK`            | 9. พร้อมกดบัตร                       |
+
+**ระหว่างกด**
+
+| Value                      | Description                          |
+|----------------------------|--------------------------------------|
+| `BOOKING_IN_PROGRESS`      | 10. กำลังกดบัตร                      |
+| `PARTIALLY_BOOKED`         | 11. ได้บัตรบางส่วน                   |
+| `FULLY_BOOKED`             | 12. กดได้ครบแล้ว                     |
+| `BOOKING_FAILED`           | 13. กดไม่ได้                         |
+
+**ลูกค้าได้เอง**
+
+| Value                        | Description                                     |
+|------------------------------|-------------------------------------------------|
+| `CUSTOMER_SELF_BOOKED`       | 14. ลูกค้าแจ้งว่าได้เอง (รอทีมตรวจ)           |
+| `TEAM_NOT_RECEIVED`          | 15. ทีมยังไม่ได้บัตร                            |
+| `TEAM_BOOKED`                | 16. ทีมกดได้แล้ว                                |
+| `PARTIAL_SELF_TEAM_BOOKING`  | 17. ลูกค้าได้เองบางส่วน / ทีมกดต่อ            |
+
+**การเงิน**
+
+| Value                        | Description                          |
+|------------------------------|--------------------------------------|
+| `WAITING_SERVICE_FEE`        | 18. รอโอนค่ากด                       |
+| `WAITING_SERVICE_FEE_VERIFY` | 19. รอตรวจสลิปค่ากด                  |
+| `SERVICE_FEE_PAID`           | 20. ชำระค่ากดแล้ว                    |
+
+**มัดจำ**
+
+| Value               | Description              |
+|---------------------|--------------------------|
+| `DEPOSIT_PENDING`   | 21. รอใช้งาน             |
+| `DEPOSIT_USED`      | 22. ใช้เป็นค่ากด         |
+| `DEPOSIT_FORFEITED` | 23. ยึดมัดจำ             |
+| `WAITING_REFUND`    | 24. รอคืนเงิน            |
+| `REFUNDED`          | 25. โอนคืนแล้ว           |
+
+**ปิดงาน**
+
+| Value               | Description                        |
+|---------------------|------------------------------------|
+| `COMPLETED`         | 26. เสร็จสมบูรณ์                   |
+| `CANCELLED`         | 27. ยกเลิก (ยึดมัดจำ)             |
+| `CLOSED_REFUNDED`   | 28. ปิดงาน (คืนเงินแล้ว)          |
 
 ---
 
