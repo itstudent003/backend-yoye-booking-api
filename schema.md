@@ -378,13 +378,12 @@ A customer's booking record for an event.
 
 | Field             | Type          | Description                                            |
 |-------------------|---------------|--------------------------------------------------------|
-| `id`              | String        | CUID primary key                                       |
+| `id`              | Int           | Auto-increment primary key                             |
 | `queueCode`       | String        | Unique human-readable queue reference code             |
 | `bookingCode`     | String        | Unique booking code in format `YY-XXXXXX` (auto-generated) |
-| `eventId`         | String        | Foreign key to `Event`                                 |
-| `customerId`      | String        | Foreign key to `Customer`                              |
-| `assignedAdminId` | String?       | Admin user assigned to this booking                    |
-| `status`          | BookingStatus | Processing status; defaults to `PENDING_APPROVAL`      |
+| `eventId`         | Int           | Foreign key to `Event`                                 |
+| `customerId`      | Int           | Foreign key to `Customer`                              |
+| `status`          | BookingStatus | Processing status; defaults to `WAITING_QUEUE_APPROVAL`|
 | `paymentStatus`   | PaymentStatus | Payment status; defaults to `UNPAID`                   |
 | `amount`          | Float         | Base booking amount; defaults to `0`                   |
 | `serviceFee`      | Float         | Service fee charged; defaults to `0`                   |
@@ -395,9 +394,13 @@ A customer's booking record for an event.
 | `refundAmount`    | Float         | Total refunded amount; defaults to `0`                 |
 | `notes`           | String?       | Admin notes on the booking                             |
 | `createdAt`       | DateTime      | Record creation timestamp                              |
+| `createdBy`       | String?       | Name of the customer who created the booking           |
 | `updatedAt`       | DateTime      | Record last updated timestamp                          |
+| `updatedBy`       | String?       | Name of admin who last updated                         |
+| `deletedAt`       | DateTime?     | Soft-delete timestamp                                  |
+| `deletedBy`       | String?       | Name of admin who soft-deleted                         |
 
-**Relations:** `event`, `customer`, `user` (assigned admin), `paymentSlips`, `fulfillment`, `statusLogs`, `billingRecord`, `refunds`, `deposits`, `formSubmission`
+**Relations:** `event`, `customer`, `paymentSlips`, `fulfillment`, `statusLogs`, `billingRecord`, `refunds`, `deposits`, `formSubmission`, `bookingItems`, `deepInfoResponses`
 
 ---
 
@@ -555,12 +558,49 @@ Data submitted via the form-type event booking flow.
 
 | Field        | Type     | Description                                  |
 |--------------|----------|----------------------------------------------|
-| `id`         | String   | CUID primary key                             |
-| `bookingId`  | String   | Unique foreign key to `Booking`              |
+| `id`         | Int      | Auto-increment primary key                   |
+| `bookingId`  | Int      | Unique foreign key to `Booking`              |
 | `formData`   | Json     | JSON object containing all submitted answers |
 | `submittedAt`| DateTime | Timestamp when the form was submitted        |
 
 **Relations:** `booking`
+
+---
+
+### `BookingItem`
+Line items within a booking — ticket zone selections (TICKET) or product entries (FORM).
+
+| Field        | Type      | Description                                           |
+|--------------|-----------|-------------------------------------------------------|
+| `id`         | Int       | Auto-increment primary key                            |
+| `bookingId`  | Int       | Foreign key to `Booking`                              |
+| `roundId`    | Int?      | Foreign key to `ShowRound` (for TICKET events)        |
+| `zoneId`     | Int?      | Foreign key to `Zone` (for TICKET events)             |
+| `label`      | String?   | Item label/name (for FORM events, e.g. product name)  |
+| `quantity`   | Int       | Number of items; defaults to `1`                      |
+| `unitPrice`  | Float     | Price per unit; defaults to `0`                       |
+| `totalPrice` | Float     | Calculated total (unitPrice × quantity); defaults to `0` |
+| `notes`      | String?   | Additional notes                                      |
+| `createdAt`  | DateTime  | Record creation timestamp                             |
+
+**Relations:** `booking`, `round` (ShowRound), `zone` (Zone)
+
+---
+
+### `DeepInfoResponse`
+User-submitted answers to event deep info fields. Works for both TICKET and FORM events.
+
+| Field        | Type      | Description                                    |
+|--------------|-----------|------------------------------------------------|
+| `id`         | Int       | Auto-increment primary key                     |
+| `bookingId`  | Int       | Foreign key to `Booking`                       |
+| `fieldId`    | Int       | Foreign key to `DeepInfoField`                 |
+| `value`      | String    | The value submitted by the user                |
+| `createdAt`  | DateTime  | Record creation timestamp                      |
+
+**Unique constraint:** `[bookingId, fieldId]`
+
+**Relations:** `booking`, `field` (DeepInfoField)
 
 ---
 
@@ -570,7 +610,6 @@ Data submitted via the form-type event booking flow.
 User
  ├── Account[]           (OAuth accounts)
  ├── Session[]           (active sessions)
- ├── Booking[]           (assigned bookings)
  ├── ActivityLog[]       (actions performed)
  ├── PaymentSlip[]       (slips reviewed, "reviewer" relation)
  ├── BookingStatusLog[]  (status changes made)
@@ -580,18 +619,16 @@ Customer
  └── Booking[]
 
 Event
- ├── EventShowtime[]
- │    └── TicketZone[]
- ├── TicketZone[]
- ├── EventCustomField[]
- ├── EventInsight[]
+ ├── ShowRound[]
+ │    └── Zone[]
+ ├── DeepInfoField[]
+ │    └── DeepInfoResponse[]
  ├── Booking[]
  └── DepositTransaction[]
 
 Booking
  ├── Event
  ├── Customer
- ├── User? (assignedAdmin)
  ├── PaymentSlip[]
  │    └── RefundRequest[]
  ├── Fulfillment?
@@ -599,7 +636,9 @@ Booking
  ├── BillingRecord?
  ├── RefundRequest[]
  ├── DepositTransaction[]
- └── FormSubmission?
+ ├── FormSubmission?
+ ├── BookingItem[]
+ └── DeepInfoResponse[]
 ```
 
 ### Cascade Deletes
@@ -608,9 +647,10 @@ The following child records are automatically deleted when their parent is delet
 | Parent           | Child                   |
 |------------------|-------------------------|
 | User             | Account, Session, ActivityLog |
-| Event            | EventShowtime, TicketZone, EventCustomField, EventInsight |
-| EventShowtime    | TicketZone              |
-| Booking          | PaymentSlip, Fulfillment, BookingStatusLog, BillingRecord, RefundRequest, FormSubmission |
+| Event            | ShowRound, DeepInfoField |
+| ShowRound        | Zone                    |
+| DeepInfoField    | DeepInfoResponse        |
+| Booking          | PaymentSlip, Fulfillment, BookingStatusLog, BillingRecord, RefundRequest, FormSubmission, BookingItem, DeepInfoResponse |
 | PaymentSlip      | (cascade from Booking)  |
 
 ---

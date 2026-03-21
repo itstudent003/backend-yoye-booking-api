@@ -127,7 +127,6 @@ model User {
 
   accounts   Account[]
   sessions   Session[]
-  bookings   Booking[]
   activities ActivityLog[]
   paymentSlipsReviewed PaymentSlip[] @relation("reviewer")
   statusLogsChanged    BookingStatusLog[]
@@ -231,7 +230,9 @@ model ShowRound {
   eventId   Int
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  zones     Zone[]
+  zones        Zone[]
+  bookings     Booking[]
+  bookingItems BookingItem[]
 
   createdAt DateTime @default(now())
 }
@@ -247,6 +248,9 @@ model Zone {
   roundId   Int
   round     ShowRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
 
+  bookings     Booking[]
+  bookingItems BookingItem[]
+
   createdAt DateTime @default(now())
 }
 
@@ -259,6 +263,8 @@ model DeepInfoField {
   eventId    Int
   event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  responses  DeepInfoResponse[]
+
   createdAt  DateTime @default(now())
 }
 
@@ -269,7 +275,9 @@ model Booking {
   bookingCode     String        @unique
   eventId         Int
   customerId      Int
-  assignedAdminId Int?
+  showRoundId     Int?
+  zoneId          Int?
+  nameCustomer    String?
   status          BookingStatus @default(WAITING_QUEUE_APPROVAL)
   paymentStatus   PaymentStatus @default(UNPAID)
   amount          Float         @default(0)
@@ -280,19 +288,28 @@ model Booking {
   totalPaid       Float         @default(0)
   refundAmount    Float         @default(0)
   notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
 
-  event          Event              @relation(fields: [eventId], references: [id])
-  customer       Customer           @relation(fields: [customerId], references: [id])
-  user           User?              @relation(fields: [assignedAdminId], references: [id])
-  paymentSlips   PaymentSlip[]
-  fulfillment    Fulfillment?
-  statusLogs     BookingStatusLog[]
-  billingRecord  BillingRecord?
-  refunds        RefundRequest[]
-  deposits       DepositTransaction[]
-  formSubmission FormSubmission?
+  // audit
+  createdAt       DateTime      @default(now())
+  createdBy       String?
+  updatedAt       DateTime      @updatedAt
+  updatedBy       String?
+  deletedAt       DateTime?
+  deletedBy       String?
+
+  event            Event              @relation(fields: [eventId], references: [id])
+  customer         Customer           @relation(fields: [customerId], references: [id])
+  showRound        ShowRound?         @relation(fields: [showRoundId], references: [id])
+  zone             Zone?              @relation(fields: [zoneId], references: [id])
+  paymentSlips     PaymentSlip[]
+  fulfillment      Fulfillment?
+  statusLogs       BookingStatusLog[]
+  billingRecord    BillingRecord?
+  refunds          RefundRequest[]
+  deposits         DepositTransaction[]
+  formSubmission   FormSubmission?
+  bookingItems     BookingItem[]
+  deepInfoResponses DeepInfoResponse[]
 
   @@map("bookings")
 }
@@ -429,6 +446,41 @@ model ActivityLog {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("activity_logs")
+}
+
+// รายการบัตร/สินค้าที่จองในแต่ละ booking (รองรับทั้ง TICKET และ FORM)
+model BookingItem {
+  id          Int      @id @default(autoincrement())
+  bookingId   Int
+  roundId     Int?     // สำหรับ TICKET: รอบที่เลือก
+  zoneId      Int?     // สำหรับ TICKET: โซนที่เลือก
+  label       String?  // สำหรับ FORM: ชื่อรายการ (เช่น ชื่อสินค้า)
+  quantity    Int      @default(1)
+  unitPrice   Float    @default(0)
+  totalPrice  Float    @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  booking Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  round   ShowRound? @relation(fields: [roundId], references: [id])
+  zone    Zone?      @relation(fields: [zoneId], references: [id])
+
+  @@map("booking_items")
+}
+
+// เก็บคำตอบของ deepInfoFields ที่ผู้ใช้กรอก (ใช้ได้ทั้ง TICKET และ FORM)
+model DeepInfoResponse {
+  id          Int      @id @default(autoincrement())
+  bookingId   Int
+  fieldId     Int
+  value       String   // ค่าที่ผู้ใช้กรอก
+  createdAt   DateTime @default(now())
+
+  booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  field   DeepInfoField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, fieldId])
+  @@map("deep_info_responses")
 }
 
 model FormSubmission {
