@@ -68,11 +68,9 @@ enum PaymentStatus {
 }
 
 enum PaymentSlipType {
-  DEPOSIT
-  TICKET
-  PRODUCT
-  SERVICE_FEE
-  OTHER
+  DEPOSIT_PAID   // ชำระค่ามัดจำ
+  CARD_PAID      // ชำระค่าบัตร
+  SERVICE_PAID   // ชำระค่ากด
 }
 
 enum PaymentSlipStatus {
@@ -231,7 +229,6 @@ model ShowRound {
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   zones        Zone[]
-  bookings     Booking[]
   bookingItems BookingItem[]
 
   createdAt DateTime @default(now())
@@ -248,7 +245,6 @@ model Zone {
   roundId   Int
   round     ShowRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
 
-  bookings     Booking[]
   bookingItems BookingItem[]
 
   createdAt DateTime @default(now())
@@ -275,18 +271,17 @@ model Booking {
   bookingCode     String        @unique
   eventId         Int
   customerId      Int
-  showRoundId     Int?
-  zoneId          Int?
   nameCustomer    String?
   status          BookingStatus @default(WAITING_QUEUE_APPROVAL)
   paymentStatus   PaymentStatus @default(UNPAID)
-  amount          Float         @default(0)
+  netCardPrice    Float         @default(0)
   serviceFee      Float         @default(0)
   shippingFee     Float         @default(0)
   vatAmount       Float         @default(0)
   depositPaid     Float         @default(0)
   totalPaid       Float         @default(0)
   refundAmount    Float         @default(0)
+  isActive        Boolean      @default(true)
   notes           String?
 
   // audit
@@ -299,8 +294,6 @@ model Booking {
 
   event            Event              @relation(fields: [eventId], references: [id])
   customer         Customer           @relation(fields: [customerId], references: [id])
-  showRound        ShowRound?         @relation(fields: [showRoundId], references: [id])
-  zone             Zone?              @relation(fields: [zoneId], references: [id])
   paymentSlips     PaymentSlip[]
   fulfillment      Fulfillment?
   statusLogs       BookingStatusLog[]
@@ -454,10 +447,7 @@ model BookingItem {
   bookingId   Int
   roundId     Int?     // สำหรับ TICKET: รอบที่เลือก
   zoneId      Int?     // สำหรับ TICKET: โซนที่เลือก
-  label       String?  // สำหรับ FORM: ชื่อรายการ (เช่น ชื่อสินค้า)
   quantity    Int      @default(1)
-  unitPrice   Float    @default(0)
-  totalPrice  Float    @default(0)
   notes       String?
   createdAt   DateTime @default(now())
 

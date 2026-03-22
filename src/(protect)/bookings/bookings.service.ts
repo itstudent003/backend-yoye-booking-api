@@ -6,6 +6,16 @@ import { QueryBookingDto } from './dto/query-booking.dto';
 import { generateBookingCode } from '../common/utils/generate-booking-code';
 import { Prisma } from '@prisma/client';
 
+interface AuthUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+}
+
+function fullName(user: AuthUser) {
+  return `${user.firstName} ${user.lastName}`;
+}
+
 @Injectable()
 export class BookingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -64,6 +74,8 @@ export class BookingsService {
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.BookingWhereInput = {
+      deletedAt: null,
+      isActive: true,
       ...(status && { status }),
       ...(eventId && { eventId }),
       ...(search && {
@@ -86,12 +98,17 @@ export class BookingsService {
           queueCode: true,
           bookingCode: true,
           status: true,
-          amount: true,
+          nameCustomer: true,
+          depositPaid: true,
           createdAt: true,
           event: { select: { id: true, name: true, type: true } },
           customer: { select: { id: true, fullName: true } },
-          showRound: { select: { id: true, name: true } },
-          zone: { select: { id: true, name: true } },
+          bookingItems: {
+            select: {
+              round: { select: { id: true, name: true } },
+              zone: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       this.prisma.booking.count({ where }),
@@ -110,87 +127,82 @@ export class BookingsService {
 
   async findOne(id: number) {
     const booking = await this.prisma.booking.findUnique({
-      where: { id },
-      include: {
-        event: { include: { deepInfoFields: true } },
-        customer: true,
-        paymentSlips: true,
-        fulfillment: true,
-        statusLogs: { include: { admin: { select: { id: true, firstName: true, lastName: true } } } },
-        billingRecord: true,
-        refunds: true,
-        deposits: true,
-        formSubmission: true,
+      where: { id, deletedAt: null, isActive: true },
+      select: {
+        id: true,
+        queueCode: true,
+        bookingCode: true,
+        status: true,
+        paymentStatus: true,
+        nameCustomer: true,
+        netCardPrice: true,
+        serviceFee: true,
+        shippingFee: true,
+        vatAmount: true,
+        depositPaid: true,
+        totalPaid: true,
+        refundAmount: true,
+        notes: true,
+        createdAt: true,
+        createdBy: true,
+        updatedAt: true,
+        updatedBy: true,
+        event: { select: { id: true, name: true, type: true } },
+        customer: { select: { id: true, fullName: true, nickname: true, phone: true, lineId: true } },
         bookingItems: { include: { round: true, zone: true } },
         deepInfoResponses: { include: { field: true } },
+        formSubmission: true,
+        statusLogs: {
+          orderBy: { createdAt: 'desc' },
+          include: { admin: { select: { id: true, firstName: true, lastName: true } } },
+        },
+        paymentSlips: {
+          orderBy: { createdAt: 'desc' },
+          include: { reviewer: { select: { id: true, firstName: true, lastName: true } } },
+        },
       },
     });
     if (!booking) throw new NotFoundException('Booking not found');
     return booking;
   }
 
-  async update(id: number, dto: UpdateBookingDto) {
+  async update(id: number, dto: UpdateBookingDto, user: AuthUser) {
     await this.findOne(id);
-    const { bookingItems, deepInfoResponses, formData, ...bookingData } = dto;
 
     return this.prisma.$transaction(async (tx) => {
-      // Update booking items (replace strategy)
-      if (bookingItems) {
-        await tx.bookingItem.deleteMany({ where: { bookingId: id } });
-        if (bookingItems.length) {
-          await tx.bookingItem.createMany({
-            data: bookingItems.map((item) => ({
-              bookingId: id,
-              roundId: item.roundId,
-              zoneId: item.zoneId,
-              label: item.label,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice ?? 0,
-              totalPrice: (item.unitPrice ?? 0) * item.quantity,
-              notes: item.notes,
-            })),
-          });
-        }
-      }
+      const booking = await tx.booking.update({
+        where: { id },
+        data: {
+          ...dto,
+          updatedBy: fullName(user),
+        },
+      });
 
-      // Update deep info responses (replace strategy)
-      if (deepInfoResponses) {
-        await tx.deepInfoResponse.deleteMany({ where: { bookingId: id } });
-        if (deepInfoResponses.length) {
-          await tx.deepInfoResponse.createMany({
-            data: deepInfoResponses.map((r) => ({
-              bookingId: id,
-              fieldId: r.fieldId,
-              value: r.value,
-            })),
-          });
-        }
-      }
-
-      // Update form submission (upsert)
-      if (formData) {
-        await tx.formSubmission.upsert({
-          where: { bookingId: id },
-          create: { bookingId: id, formData },
-          update: { formData },
+      if (dto.status) {
+        await tx.bookingStatusLog.create({
+          data: {
+            bookingId: id,
+            changedBy: user.id,
+            status: dto.status,
+            notes: dto.notes,
+          },
         });
       }
 
-      // Update booking fields
-      return tx.booking.update({
-        where: { id },
-        data: bookingData,
-        include: {
-          bookingItems: { include: { round: true, zone: true } },
-          deepInfoResponses: { include: { field: true } },
-          formSubmission: true,
-        },
-      });
+      return booking;
     });
   }
 
-  async remove(id: number) {
+  async remove(id: number, user: AuthUser) {
     await this.findOne(id);
-    return this.prisma.booking.delete({ where: { id } });
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedBy: fullName(user),
+      },
+    });
   }
 }

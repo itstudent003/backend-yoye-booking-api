@@ -385,7 +385,7 @@ A customer's booking record for an event.
 | `customerId`      | Int           | Foreign key to `Customer`                              |
 | `status`          | BookingStatus | Processing status; defaults to `WAITING_QUEUE_APPROVAL`|
 | `paymentStatus`   | PaymentStatus | Payment status; defaults to `UNPAID`                   |
-| `amount`          | Float         | Base booking amount; defaults to `0`                   |
+| `netCardPrice`    | Float         | Net card price; defaults to `0`                        |
 | `serviceFee`      | Float         | Service fee charged; defaults to `0`                   |
 | `shippingFee`     | Float         | Shipping fee charged; defaults to `0`                  |
 | `vatAmount`       | Float         | VAT amount; defaults to `0`                            |

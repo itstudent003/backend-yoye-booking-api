@@ -1,4 +1,4 @@
-import { PrismaClient, BookingStatus, EventType, PaymentStatus } from '@prisma/client';
+import { PrismaClient, BookingStatus, EventType, PaymentStatus, PaymentSlipType, PaymentSlipStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -162,54 +162,54 @@ async function main() {
   const allStatuses: {
     status: BookingStatus;
     paymentStatus: PaymentStatus;
-    amount: number;
+    netCardPrice: number;
     useForm: boolean;
   }[] = [
     // --- คิว ---
-    { status: 'WAITING_QUEUE_APPROVAL', paymentStatus: 'UNPAID', amount: 2500, useForm: false },
-    { status: 'WAITING_DEPOSIT_TRANSFER', paymentStatus: 'UNPAID', amount: 5000, useForm: false },
-    { status: 'WAITING_DEPOSIT_VERIFY', paymentStatus: 'UNPAID', amount: 1500, useForm: true },
-    { status: 'QUEUE_BOOKED', paymentStatus: 'PARTIALLY_PAID', amount: 2500, useForm: false },
-    { status: 'WAITING_BOOKING_INFO', paymentStatus: 'PARTIALLY_PAID', amount: 6000, useForm: false },
-    { status: 'TRANSFERRING_TICKET', paymentStatus: 'PARTIALLY_PAID', amount: 3000, useForm: true },
-    { status: 'CONFIRMING_TICKET', paymentStatus: 'PARTIALLY_PAID', amount: 5000, useForm: false },
-    { status: 'WAITING_ADMIN_CONFIRM', paymentStatus: 'PARTIALLY_PAID', amount: 2500, useForm: false },
-    { status: 'READY_TO_BOOK', paymentStatus: 'PARTIALLY_PAID', amount: 1500, useForm: true },
+    { status: 'WAITING_QUEUE_APPROVAL', paymentStatus: 'UNPAID', netCardPrice: 2500, useForm: false },
+    { status: 'WAITING_DEPOSIT_TRANSFER', paymentStatus: 'UNPAID', netCardPrice: 5000, useForm: false },
+    { status: 'WAITING_DEPOSIT_VERIFY', paymentStatus: 'UNPAID', netCardPrice: 1500, useForm: true },
+    { status: 'QUEUE_BOOKED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 2500, useForm: false },
+    { status: 'WAITING_BOOKING_INFO', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 6000, useForm: false },
+    { status: 'TRANSFERRING_TICKET', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 3000, useForm: true },
+    { status: 'CONFIRMING_TICKET', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 5000, useForm: false },
+    { status: 'WAITING_ADMIN_CONFIRM', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 2500, useForm: false },
+    { status: 'READY_TO_BOOK', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 1500, useForm: true },
 
     // --- ระหว่างกด ---
-    { status: 'BOOKING_IN_PROGRESS', paymentStatus: 'PARTIALLY_PAID', amount: 5000, useForm: false },
-    { status: 'PARTIALLY_BOOKED', paymentStatus: 'PARTIALLY_PAID', amount: 7500, useForm: false },
-    { status: 'FULLY_BOOKED', paymentStatus: 'PARTIALLY_PAID', amount: 2500, useForm: false },
-    { status: 'BOOKING_FAILED', paymentStatus: 'PARTIALLY_PAID', amount: 3000, useForm: true },
+    { status: 'BOOKING_IN_PROGRESS', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 5000, useForm: false },
+    { status: 'PARTIALLY_BOOKED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 7500, useForm: false },
+    { status: 'FULLY_BOOKED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 2500, useForm: false },
+    { status: 'BOOKING_FAILED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 3000, useForm: true },
 
     // --- ลูกค้าได้เอง ---
-    { status: 'CUSTOMER_SELF_BOOKED', paymentStatus: 'PARTIALLY_PAID', amount: 5000, useForm: false },
-    { status: 'TEAM_NOT_RECEIVED', paymentStatus: 'PARTIALLY_PAID', amount: 2500, useForm: false },
-    { status: 'TEAM_BOOKED', paymentStatus: 'PARTIALLY_PAID', amount: 6000, useForm: true },
-    { status: 'PARTIAL_SELF_TEAM_BOOKING', paymentStatus: 'PARTIALLY_PAID', amount: 4000, useForm: false },
+    { status: 'CUSTOMER_SELF_BOOKED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 5000, useForm: false },
+    { status: 'TEAM_NOT_RECEIVED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 2500, useForm: false },
+    { status: 'TEAM_BOOKED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 6000, useForm: true },
+    { status: 'PARTIAL_SELF_TEAM_BOOKING', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 4000, useForm: false },
 
     // --- การเงิน ---
-    { status: 'WAITING_SERVICE_FEE', paymentStatus: 'PARTIALLY_PAID', amount: 5000, useForm: false },
-    { status: 'WAITING_SERVICE_FEE_VERIFY', paymentStatus: 'PARTIALLY_PAID', amount: 3000, useForm: true },
-    { status: 'SERVICE_FEE_PAID', paymentStatus: 'PAID', amount: 2500, useForm: false },
+    { status: 'WAITING_SERVICE_FEE', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 5000, useForm: false },
+    { status: 'WAITING_SERVICE_FEE_VERIFY', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 3000, useForm: true },
+    { status: 'SERVICE_FEE_PAID', paymentStatus: 'PAID', netCardPrice: 2500, useForm: false },
 
     // --- มัดจำ ---
-    { status: 'DEPOSIT_PENDING', paymentStatus: 'PARTIALLY_PAID', amount: 5000, useForm: false },
-    { status: 'DEPOSIT_USED', paymentStatus: 'PAID', amount: 1500, useForm: true },
-    { status: 'DEPOSIT_FORFEITED', paymentStatus: 'PARTIALLY_PAID', amount: 2500, useForm: false },
-    { status: 'WAITING_REFUND', paymentStatus: 'PAID', amount: 3000, useForm: false },
-    { status: 'REFUNDED', paymentStatus: 'REFUNDED', amount: 5000, useForm: true },
+    { status: 'DEPOSIT_PENDING', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 5000, useForm: false },
+    { status: 'DEPOSIT_USED', paymentStatus: 'PAID', netCardPrice: 1500, useForm: true },
+    { status: 'DEPOSIT_FORFEITED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 2500, useForm: false },
+    { status: 'WAITING_REFUND', paymentStatus: 'PAID', netCardPrice: 3000, useForm: false },
+    { status: 'REFUNDED', paymentStatus: 'REFUNDED', netCardPrice: 5000, useForm: true },
 
     // --- ปิดงาน ---
-    { status: 'COMPLETED', paymentStatus: 'PAID', amount: 6000, useForm: false },
-    { status: 'CANCELLED', paymentStatus: 'PARTIALLY_PAID', amount: 2500, useForm: false },
-    { status: 'CLOSED_REFUNDED', paymentStatus: 'REFUNDED', amount: 3000, useForm: true },
+    { status: 'COMPLETED', paymentStatus: 'PAID', netCardPrice: 6000, useForm: false },
+    { status: 'CANCELLED', paymentStatus: 'PARTIALLY_PAID', netCardPrice: 2500, useForm: false },
+    { status: 'CLOSED_REFUNDED', paymentStatus: 'REFUNDED', netCardPrice: 3000, useForm: true },
   ];
 
   console.log(`Seeding ${allStatuses.length} bookings...`);
 
   for (let i = 0; i < allStatuses.length; i++) {
-    const { status, paymentStatus, amount, useForm } = allStatuses[i];
+    const { status, paymentStatus, netCardPrice, useForm } = allStatuses[i];
     const customer = customers[i];
     const isFormEvent = useForm;
     const event = isFormEvent ? formEvent : ticketEvent;
@@ -222,10 +222,10 @@ async function main() {
     const selectedZone = zones[i % zones.length];
     const selectedRound = selectedZone === vipZone2 || selectedZone === stdZone2 ? round2 : round1;
 
-    const depositPaid = paymentStatus !== 'UNPAID' ? amount * 0.2 : 0;
+    const depositPaid = paymentStatus !== 'UNPAID' ? netCardPrice * 0.2 : 0;
     const serviceFee = isFormEvent ? 100 : Number(selectedZone.fee);
     const totalPaid =
-      paymentStatus === 'PAID' ? amount + serviceFee :
+      paymentStatus === 'PAID' ? netCardPrice + serviceFee :
       paymentStatus === 'REFUNDED' ? 0 :
       depositPaid;
 
@@ -236,10 +236,9 @@ async function main() {
         eventId: event.id,
         customerId: customer.id,
         nameCustomer: customer.fullName,
-        ...(!isFormEvent ? { showRoundId: selectedRound.id, zoneId: selectedZone.id } : {}),
         status,
         paymentStatus,
-        amount,
+        netCardPrice,
         serviceFee,
         depositPaid,
         totalPaid,
@@ -257,10 +256,7 @@ async function main() {
         bookingItems: isFormEvent
           ? {
               create: {
-                label: 'Limited T-Shirt',
                 quantity: i % 3 === 0 ? 2 : 1,
-                unitPrice: amount,
-                totalPrice: amount * (i % 3 === 0 ? 2 : 1),
               },
             }
           : {
@@ -268,8 +264,6 @@ async function main() {
                 roundId: selectedRound.id,
                 zoneId: selectedZone.id,
                 quantity: i % 4 === 0 ? 2 : 1,
-                unitPrice: Number(selectedZone.price),
-                totalPrice: Number(selectedZone.price) * (i % 4 === 0 ? 2 : 1),
               },
             },
         // Deep info responses
@@ -314,7 +308,83 @@ async function main() {
       },
     });
 
-    console.log(`  [${i + 1}/28] ${queueCode} — ${status} (${isFormEvent ? 'FORM' : 'TICKET'})`);
+    // Payment slips — สร้างตามสถานะที่ควรมีสลิป
+    const slipsToCreate: {
+      type: PaymentSlipType;
+      slipStatus: PaymentSlipStatus;
+      slipAmount: number;
+    }[] = [];
+
+    // มัดจำ — สถานะที่ผ่านขั้นตอนมัดจำแล้ว
+    const depositPaidStatuses: BookingStatus[] = [
+      'QUEUE_BOOKED', 'WAITING_BOOKING_INFO', 'TRANSFERRING_TICKET', 'CONFIRMING_TICKET',
+      'WAITING_ADMIN_CONFIRM', 'READY_TO_BOOK', 'BOOKING_IN_PROGRESS', 'PARTIALLY_BOOKED',
+      'FULLY_BOOKED', 'BOOKING_FAILED', 'CUSTOMER_SELF_BOOKED', 'TEAM_NOT_RECEIVED',
+      'TEAM_BOOKED', 'PARTIAL_SELF_TEAM_BOOKING', 'WAITING_SERVICE_FEE',
+      'WAITING_SERVICE_FEE_VERIFY', 'SERVICE_FEE_PAID', 'DEPOSIT_PENDING', 'DEPOSIT_USED',
+      'DEPOSIT_FORFEITED', 'WAITING_REFUND', 'REFUNDED', 'COMPLETED', 'CANCELLED', 'CLOSED_REFUNDED',
+    ];
+    if (depositPaidStatuses.includes(status)) {
+      slipsToCreate.push({
+        type: 'DEPOSIT_PAID',
+        slipStatus: 'VERIFIED',
+        slipAmount: depositPaid,
+      });
+    }
+
+    // รอตรวจสลิปมัดจำ
+    if (status === 'WAITING_DEPOSIT_VERIFY') {
+      slipsToCreate.push({
+        type: 'DEPOSIT_PAID',
+        slipStatus: 'PENDING',
+        slipAmount: netCardPrice * 0.2,
+      });
+    }
+
+    // ค่าบัตร — สถานะที่ผ่านขั้นตอนโอนค่าบัตร
+    const cardPaidStatuses: BookingStatus[] = [
+      'CONFIRMING_TICKET', 'WAITING_ADMIN_CONFIRM', 'READY_TO_BOOK',
+      'BOOKING_IN_PROGRESS', 'PARTIALLY_BOOKED', 'FULLY_BOOKED',
+      'WAITING_SERVICE_FEE', 'WAITING_SERVICE_FEE_VERIFY', 'SERVICE_FEE_PAID',
+      'COMPLETED',
+    ];
+    if (cardPaidStatuses.includes(status)) {
+      slipsToCreate.push({
+        type: 'CARD_PAID',
+        slipStatus: 'VERIFIED',
+        slipAmount: netCardPrice,
+      });
+    }
+
+    // ค่ากด — สถานะที่ชำระค่ากดแล้ว
+    const serviceFeePaidStatuses: BookingStatus[] = [
+      'WAITING_SERVICE_FEE_VERIFY', 'SERVICE_FEE_PAID', 'COMPLETED',
+    ];
+    if (serviceFeePaidStatuses.includes(status)) {
+      slipsToCreate.push({
+        type: 'SERVICE_PAID',
+        slipStatus: status === 'WAITING_SERVICE_FEE_VERIFY' ? 'PENDING' : 'VERIFIED',
+        slipAmount: serviceFee,
+      });
+    }
+
+    for (const slip of slipsToCreate) {
+      await prisma.paymentSlip.create({
+        data: {
+          bookingId: booking.id,
+          type: slip.type,
+          status: slip.slipStatus,
+          systemAmount: slip.slipAmount,
+          slipAmount: slip.slipAmount,
+          imageUrl: `https://placeholder.co/slip-${booking.bookingCode}-${slip.type.toLowerCase()}.jpg`,
+          reviewerId: slip.slipStatus === 'VERIFIED' ? (i % 2 === 0 ? admin1.id : admin2.id) : null,
+          reviewedAt: slip.slipStatus === 'VERIFIED' ? new Date() : null,
+          notes: slip.slipStatus === 'PENDING' ? 'รอตรวจสอบ' : 'ตรวจสอบแล้ว',
+        },
+      });
+    }
+
+    console.log(`  [${i + 1}/28] ${queueCode} — ${status} (${isFormEvent ? 'FORM' : 'TICKET'}) [${slipsToCreate.length} slips]`);
   }
 
   console.log('\nSeed completed!');

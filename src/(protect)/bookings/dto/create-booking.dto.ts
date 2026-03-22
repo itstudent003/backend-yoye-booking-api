@@ -72,10 +72,10 @@ export class CreateBookingDto {
   @IsNumber()
   zoneId?: number;
 
-  @ApiPropertyOptional({ example: 1500, description: 'Total amount' })
+  @ApiPropertyOptional({ example: 1500, description: 'Net card price' })
   @IsOptional()
   @IsNumber()
-  amount?: number;
+  netCardPrice?: number;
 
   @ApiPropertyOptional({ example: 50, description: 'Service fee' })
   @IsOptional()
