@@ -1,9 +1,26 @@
-import { PrismaClient, BookingStatus, EventType, PaymentStatus, PaymentSlipType, PaymentSlipStatus } from '@prisma/client';
+import { PrismaClient, BookingStatus, EventType, PaymentStatus, PaymentSlipType, PaymentSlipStatus, RefundStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  // ========== 0. Cleanup ==========
+  await prisma.refundRequest.deleteMany();
+  await prisma.paymentSlip.deleteMany();
+  await prisma.bookingStatusLog.deleteMany();
+  await prisma.formSubmission.deleteMany();
+  await prisma.deepInfoResponse.deleteMany();
+  await prisma.bookingItem.deleteMany();
+  await prisma.depositTransaction.deleteMany();
+  await prisma.billingRecord.deleteMany();
+  await prisma.fulfillment.deleteMany();
+  await prisma.booking.deleteMany();
+  await prisma.deepInfoField.deleteMany();
+  await prisma.showRound.deleteMany();
+  await prisma.event.deleteMany();
+  await prisma.customer.deleteMany();
+  console.log('Cleanup done.');
+
   // ========== 1. Admin Users ==========
   const hashedPassword = await bcrypt.hash('password123', 10);
 
@@ -385,6 +402,47 @@ async function main() {
     }
 
     console.log(`  [${i + 1}/28] ${queueCode} — ${status} (${isFormEvent ? 'FORM' : 'TICKET'}) [${slipsToCreate.length} slips]`);
+  }
+
+  // ========== 6. Refund Requests ==========
+  const refundBookings = await prisma.booking.findMany({
+    where: { status: { in: ['WAITING_REFUND', 'REFUNDED', 'CLOSED_REFUNDED', 'CANCELLED'] } },
+    include: { paymentSlips: true },
+  });
+
+  const refundMockData: {
+    bankName: string;
+    accountNumber: string;
+    accountHolder: string;
+    status: RefundStatus;
+    reason: string;
+  }[] = [
+    { bankName: 'ธนาคารกสิกรไทย', accountNumber: '123-4-56789-0', accountHolder: 'นายธนา วงศ์สว่าง', status: 'REQUESTED', reason: 'ติดธุระไม่สามารถเข้าร่วมได้' },
+    { bankName: 'ธนาคารไทยพาณิชย์', accountNumber: '456-7-89012-3', accountHolder: 'นางสาวพิมพ์ใจ รักดี', status: 'APPROVED', reason: 'อีเวนต์ถูกยกเลิก' },
+    { bankName: 'ธนาคารกรุงไทย', accountNumber: '789-0-12345-6', accountHolder: 'นายกิตติ สุขสันต์', status: 'PAID', reason: 'ป่วยไม่สามารถเดินทางได้' },
+    { bankName: 'ธนาคารกรุงเทพ', accountNumber: '321-0-98765-4', accountHolder: 'นางสาวอรุณี แสงทอง', status: 'REJECTED', reason: 'เปลี่ยนใจไม่ต้องการเข้าร่วม' },
+  ];
+
+  for (let i = 0; i < refundBookings.length && i < refundMockData.length; i++) {
+    const booking = refundBookings[i];
+    const mock = refundMockData[i];
+
+    await prisma.refundRequest.create({
+      data: {
+        bookingId: booking.id,
+        processedById: mock.status === 'REQUESTED' ? null : [admin1.id, admin2.id][i % 2],
+        bookingRef: booking.bookingCode,
+        bankName: mock.bankName,
+        accountNumber: mock.accountNumber,
+        accountHolder: mock.accountHolder,
+        amount: booking.netCardPrice,
+        status: mock.status,
+        reason: mock.reason,
+        processedAt: mock.status === 'REQUESTED' ? null : new Date(),
+      },
+    });
+
+    console.log(`  [Refund ${i + 1}] ${booking.queueCode} — ${mock.status}`);
   }
 
   console.log('\nSeed completed!');

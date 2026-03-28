@@ -120,13 +120,56 @@ export class EventsService {
     });
   }
 
-  async findAll(page = 1, pageSize = 10, search?: string, type?: string) {
+  async findAll(page?: number, pageSize?: number, search?: string, type?: string) {
+    const isPaginated = page !== undefined && pageSize !== undefined;
+
     const where = {
       deletedAt: null,
       isActive: true,
       ...(search && { name: { contains: search, mode: 'insensitive' as const } }),
       ...(type && { type: type as 'TICKET' | 'FORM' }),
     };
+
+    if (!isPaginated) {
+      const events = await this.prisma.event.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          capacity: true,
+          status: true,
+          showRounds: {
+            select: {
+              zones: { select: { capacity: true } },
+            },
+          },
+          _count: {
+            select: {
+              bookings: { where: { status: 'QUEUE_BOOKED' as const } },
+            },
+          },
+        },
+      });
+
+      return {
+        data: events.map((e) => {
+          const totalCapacity =
+            e.type === 'TICKET'
+              ? e.showRounds.flatMap((r) => r.zones).reduce((sum, z) => sum + z.capacity, 0)
+              : (e.capacity ?? 0);
+          return {
+            id: e.id,
+            name: e.name,
+            type: e.type,
+            capacity: totalCapacity,
+            capacityAmount: totalCapacity - e._count.bookings,
+            status: e.status,
+          };
+        }),
+      };
+    }
 
     const [totalCounts, events] = await this.prisma.$transaction([
       this.prisma.event.count({ where }),
@@ -148,7 +191,7 @@ export class EventsService {
           },
           _count: {
             select: {
-              bookings: { where: { status: 'QUEUE_BOOKED' } },
+              bookings: { where: { status: 'QUEUE_BOOKED' as const } },
             },
           },
         },

@@ -10,7 +10,7 @@ import { ResponseInterceptor } from './(protect)/common/interceptors/response.in
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useStaticAssets(join(__dirname, '..', 'public'));
-  app.useStaticAssets(join(__dirname, '..', 'image'), { prefix: '/image' });
+  app.useStaticAssets(join(process.cwd(), 'image'), { prefix: '/image' });
 
   app.use(cookieParser());
   app.useGlobalPipes(

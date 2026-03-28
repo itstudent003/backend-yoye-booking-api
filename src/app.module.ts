@@ -7,6 +7,7 @@ import { EventsModule } from './(protect)/events/events.module';
 import { BookingsModule } from './(protect)/bookings/bookings.module';
 import { PaymentSlipsModule } from './(protect)/payment-slips/payment-slips.module';
 import { FulfillmentsModule } from './(protect)/fulfillments/fulfillments.module';
+import { RefundRequestsModule } from './(protect)/refund-requests/refund-requests.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { FulfillmentsModule } from './(protect)/fulfillments/fulfillments.module
     BookingsModule,
     PaymentSlipsModule,
     FulfillmentsModule,
+    RefundRequestsModule,
   ],
 })
 export class AppModule {}

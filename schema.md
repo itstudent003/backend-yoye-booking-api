@@ -472,7 +472,6 @@ A customer's request for a refund on a booking.
 |-----------------|-------------|---------------------------------------------------|
 | `id`            | String      | CUID primary key                                  |
 | `bookingId`     | String      | Foreign key to `Booking`                          |
-| `paymentSlipId` | String?     | Optional reference to the original payment slip   |
 | `processedById` | String?     | Admin who processed this refund                   |
 | `nickname`      | String?     | Customer nickname for reference                   |
 | `bookingRef`    | String?     | Booking reference string                          |

@@ -129,6 +129,8 @@ model User {
   paymentSlipsReviewed PaymentSlip[] @relation("reviewer")
   statusLogsChanged    BookingStatusLog[]
   refundsProcessed     RefundRequest[]
+  refundStatusLogs     RefundRequestLog[] @relation("refundStatusLogs")
+  paymentSlipLogs      PaymentSlipLog[]   @relation("paymentSlipLogs")
 
 
   @@map("users")
@@ -320,11 +322,25 @@ model PaymentSlip {
   notes        String?
   createdAt    DateTime          @default(now())
 
-  booking  Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  reviewer User?          @relation("reviewer", fields: [reviewerId], references: [id])
-  refunds  RefundRequest[]
+  booking    Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewer   User?             @relation("reviewer", fields: [reviewerId], references: [id])
+  statusLogs PaymentSlipLog[]
 
   @@map("payment_slips")
+}
+
+model PaymentSlipLog {
+  id           Int               @id @default(autoincrement())
+  paymentSlipId Int
+  changedById  Int
+  status       PaymentSlipStatus
+  note         String?
+  createdAt    DateTime          @default(now())
+
+  paymentSlip PaymentSlip @relation(fields: [paymentSlipId], references: [id], onDelete: Cascade)
+  changedBy   User        @relation("paymentSlipLogs", fields: [changedById], references: [id])
+
+  @@map("payment_slip_logs")
 }
 
 model BillingRecord {
@@ -365,13 +381,10 @@ model DepositTransaction {
 model RefundRequest {
   id            Int          @id @default(autoincrement())
   bookingId     Int
-  paymentSlipId Int?
   processedById Int?
-  nickname      String?
   bookingRef    String?
   bankName      String
   accountNumber String
-  accountType   String?
   accountHolder String
   amount        Float
   status        RefundStatus @default(REQUESTED)
@@ -379,11 +392,25 @@ model RefundRequest {
   requestedAt   DateTime     @default(now())
   processedAt   DateTime?
 
-  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  paymentSlip PaymentSlip? @relation(fields: [paymentSlipId], references: [id])
-  processedBy User?        @relation(fields: [processedById], references: [id])
+  booking     Booking              @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  processedBy User?                @relation(fields: [processedById], references: [id])
+  statusLogs  RefundRequestLog[]
 
   @@map("refund_requests")
+}
+
+model RefundRequestLog {
+  id              Int          @id @default(autoincrement())
+  refundRequestId Int
+  changedById     Int
+  status          RefundStatus
+  note            String?
+  createdAt       DateTime     @default(now())
+
+  refundRequest RefundRequest @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+  changedBy     User          @relation("refundStatusLogs", fields: [changedById], references: [id])
+
+  @@map("refund_request_logs")
 }
 
 model Fulfillment {

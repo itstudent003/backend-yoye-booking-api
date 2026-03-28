@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Param, Patch, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentSlipsService } from './payment-slips.service';
 import { CreatePaymentSlipDto } from './dto/create-payment-slip.dto';
+import { QueryPaymentSlipDto } from './dto/query-payment-slip.dto';
+import { RejectPaymentSlipDto } from './dto/reject-payment-slip.dto';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 
 @ApiBearerAuth()
@@ -13,6 +15,11 @@ export class PaymentSlipsController {
   @Post()
   create(@Body() dto: CreatePaymentSlipDto) {
     return this.paymentSlipsService.create(dto);
+  }
+
+  @Get()
+  findAll(@Query() query: QueryPaymentSlipDto) {
+    return this.paymentSlipsService.findAll(query);
   }
 
   @Get('booking/:bookingId')
@@ -31,7 +38,7 @@ export class PaymentSlipsController {
   }
 
   @Patch(':id/reject')
-  reject(@Param('id') id: string, @Request() req, @Body('notes') notes?: string) {
-    return this.paymentSlipsService.reject(+id, req.user.id, notes);
+  reject(@Param('id') id: string, @Request() req, @Body() dto: RejectPaymentSlipDto) {
+    return this.paymentSlipsService.reject(+id, req.user.id, dto.notes);
   }
 }
