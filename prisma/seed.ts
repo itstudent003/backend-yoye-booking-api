@@ -1,4 +1,4 @@
-import { PrismaClient, BookingStatus, EventType, PaymentStatus, PaymentSlipType, PaymentSlipStatus, RefundStatus } from '@prisma/client';
+import { PrismaClient, BookingStatus, DeliveryStatus, EventType, FulfillmentType, PaymentStatus, PaymentSlipType, PaymentSlipStatus, RefundStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -231,7 +231,6 @@ async function main() {
     const isFormEvent = useForm;
     const event = isFormEvent ? formEvent : ticketEvent;
     const idx = String(i + 1).padStart(3, '0');
-    const queueCode = `Q-${idx}`;
     const bookingCode = `26-SEED${idx.slice(-2)}`;
 
     // Pick zone for ticket bookings
@@ -248,7 +247,6 @@ async function main() {
 
     const booking = await prisma.booking.create({
       data: {
-        queueCode,
         bookingCode,
         eventId: event.id,
         customerId: customer.id,
@@ -401,10 +399,74 @@ async function main() {
       });
     }
 
-    console.log(`  [${i + 1}/28] ${queueCode} — ${status} (${isFormEvent ? 'FORM' : 'TICKET'}) [${slipsToCreate.length} slips]`);
+    console.log(`  [${i + 1}/28] ${bookingCode} — ${status} (${isFormEvent ? 'FORM' : 'TICKET'}) [${slipsToCreate.length} slips]`);
   }
 
-  // ========== 6. Refund Requests ==========
+  // ========== 6. Fulfillments (mock shipping data) ==========
+  const trackingBookings = await prisma.booking.findMany({
+    where: { status: { in: ['WAITING_SERVICE_FEE', 'WAITING_SERVICE_FEE_VERIFY', 'SERVICE_FEE_PAID'] } },
+  });
+
+  const mockShipping = [
+    {
+      recipientName: 'นายธนวัฒน์ สุขสมบูรณ์',
+      recipientPhone: '0812345678',
+      shippingAddress: '99/1 ถ.พระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพฯ 10310',
+      type: FulfillmentType.DELIVERY,
+      deliveryStatus: DeliveryStatus.NOT_STARTED,
+      serviceFee: 500,
+      shippingFee: 100,
+    },
+    {
+      recipientName: 'นางสาวพิมพ์ชนก มีสุข',
+      recipientPhone: '0898765432',
+      shippingAddress: '45/2 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110',
+      type: FulfillmentType.DELIVERY,
+      deliveryStatus: DeliveryStatus.WAITING_DELIVERY,
+      serviceFee: 300,
+      shippingFee: 80,
+    },
+    {
+      recipientName: 'นายกิตติพงษ์ รุ่งเรือง',
+      recipientPhone: '0915557777',
+      shippingAddress: '12 ถ.นิมมานเหมินท์ ต.สุเทพ อ.เมือง จ.เชียงใหม่ 50200',
+      type: FulfillmentType.DELIVERY,
+      deliveryStatus: DeliveryStatus.DELIVERED,
+      serviceFee: 400,
+      shippingFee: 150,
+    },
+  ];
+
+  for (let i = 0; i < trackingBookings.length && i < mockShipping.length; i++) {
+    const booking = trackingBookings[i];
+    const mock = mockShipping[i];
+    const totalCharge = mock.serviceFee + mock.shippingFee;
+
+    await prisma.fulfillment.upsert({
+      where: { bookingId: booking.id },
+      create: {
+        bookingId: booking.id,
+        type: mock.type,
+        deliveryStatus: mock.deliveryStatus,
+        serviceFee: mock.serviceFee,
+        shippingFee: mock.shippingFee,
+        totalCharge,
+        recipientName: mock.recipientName,
+        recipientPhone: mock.recipientPhone,
+        shippingAddress: mock.shippingAddress,
+      },
+      update: {
+        deliveryStatus: mock.deliveryStatus,
+        recipientName: mock.recipientName,
+        recipientPhone: mock.recipientPhone,
+        shippingAddress: mock.shippingAddress,
+      },
+    });
+
+    console.log(`  [Fulfillment ${i + 1}] ${booking.bookingCode} — ${mock.recipientName}`);
+  }
+
+  // ========== 7. Refund Requests ==========
   const refundBookings = await prisma.booking.findMany({
     where: { status: { in: ['WAITING_REFUND', 'REFUNDED', 'CLOSED_REFUNDED', 'CANCELLED'] } },
     include: { paymentSlips: true },
@@ -442,7 +504,7 @@ async function main() {
       },
     });
 
-    console.log(`  [Refund ${i + 1}] ${booking.queueCode} — ${mock.status}`);
+    console.log(`  [Refund ${i + 1}] ${booking.bookingCode} — ${mock.status}`);
   }
 
   console.log('\nSeed completed!');

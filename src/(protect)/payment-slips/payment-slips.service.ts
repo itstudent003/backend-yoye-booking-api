@@ -23,7 +23,7 @@ export class PaymentSlipsService {
       ...(search && {
         booking: {
           OR: [
-            { queueCode: { contains: search, mode: 'insensitive' as const } },
+            { bookingCode: { contains: search, mode: 'insensitive' as const } },
             { nameCustomer: { contains: search, mode: 'insensitive' as const } },
           ],
         },
@@ -40,7 +40,6 @@ export class PaymentSlipsService {
           booking: {
             select: {
               id: true,
-              queueCode: true,
               bookingCode: true,
               nameCustomer: true,
               status: true,

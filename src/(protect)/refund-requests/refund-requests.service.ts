@@ -22,7 +22,6 @@ export class RefundRequestsService {
       ...(search && {
         booking: {
           OR: [
-            { queueCode: { contains: search, mode: 'insensitive' } },
             { bookingCode: { contains: search, mode: 'insensitive' } },
             { nameCustomer: { contains: search, mode: 'insensitive' } },
           ],
@@ -34,7 +33,6 @@ export class RefundRequestsService {
       booking: {
         select: {
           id: true,
-          queueCode: true,
           bookingCode: true,
           nameCustomer: true,
           event: { select: { id: true, name: true } },
@@ -88,7 +86,7 @@ export class RefundRequestsService {
     const refund = await this.prisma.refundRequest.findUnique({
       where: { id },
       include: {
-        booking: { select: { id: true, queueCode: true, bookingCode: true } },
+        booking: { select: { id: true, bookingCode: true } },
         processedBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });

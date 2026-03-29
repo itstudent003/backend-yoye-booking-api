@@ -85,13 +85,14 @@ enum FulfillmentType {
   DELIVERY
 }
 
+enum BillAction {
+  CREATE
+  EDIT
+}
+
 enum DeliveryStatus {
   NOT_STARTED
-  WAITING_PICKUP
-  READY_FOR_PICKUP
-  PICKED_UP
   WAITING_DELIVERY
-  SHIPPED
   DELIVERED
   CANCELLED
 }
@@ -131,6 +132,7 @@ model User {
   refundsProcessed     RefundRequest[]
   refundStatusLogs     RefundRequestLog[] @relation("refundStatusLogs")
   paymentSlipLogs      PaymentSlipLog[]   @relation("paymentSlipLogs")
+  fulfillmentLogs      FulfillmentLog[]   @relation("fulfillmentLogs")
 
 
   @@map("users")
@@ -269,7 +271,6 @@ model DeepInfoField {
 
 model Booking {
   id              Int           @id @default(autoincrement())
-  queueCode       String        @unique
   bookingCode     String        @unique
   eventId         Int
   customerId      Int
@@ -435,9 +436,29 @@ model Fulfillment {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking  Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  billLogs FulfillmentLog[]
 
   @@map("fulfillments")
+}
+
+model FulfillmentLog {
+  id              Int             @id @default(autoincrement())
+  fulfillmentId   Int
+  adminId         Int
+  action          BillAction
+  fulfillmentType FulfillmentType
+  serviceFee      Float
+  shippingFee     Float
+  vatAmount       Float
+  totalCharge     Float
+  note            String?
+  createdAt       DateTime        @default(now())
+
+  fulfillment Fulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  admin       User        @relation("fulfillmentLogs", fields: [adminId], references: [id])
+
+  @@map("fulfillment_logs")
 }
 
 model BookingStatusLog {

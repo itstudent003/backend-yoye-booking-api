@@ -50,10 +50,6 @@ export class DeepInfoResponseDto {
 }
 
 export class CreateBookingDto {
-  @ApiProperty({ example: 'Q-123456', description: 'Queue code for the booking' })
-  @IsString()
-  queueCode: string;
-
   @ApiProperty({ example: 1, description: 'ID of the event' })
   @IsNumber()
   eventId: number;

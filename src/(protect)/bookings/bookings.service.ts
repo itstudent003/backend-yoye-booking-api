@@ -21,7 +21,14 @@ export class BookingsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateBookingDto) {
-    const { bookingItems, deepInfoResponses, formData, ...bookingData } = dto;
+    const {
+      bookingItems,
+      deepInfoResponses,
+      formData,
+      showRoundId: _showRoundId,
+      zoneId: _zoneId,
+      ...bookingData
+    } = dto;
 
     let bookingCode: string;
     do {
@@ -37,10 +44,7 @@ export class BookingsService {
             create: bookingItems.map((item) => ({
               roundId: item.roundId,
               zoneId: item.zoneId,
-              label: item.label,
               quantity: item.quantity,
-              unitPrice: item.unitPrice ?? 0,
-              totalPrice: (item.unitPrice ?? 0) * item.quantity,
               notes: item.notes,
             })),
           },
@@ -80,7 +84,6 @@ export class BookingsService {
       ...(eventId && { eventId }),
       ...(search && {
         OR: [
-          { queueCode: { contains: search, mode: 'insensitive' as const } },
           { bookingCode: { contains: search, mode: 'insensitive' as const } },
           { customer: { fullName: { contains: search, mode: 'insensitive' as const } } },
         ],
@@ -95,7 +98,6 @@ export class BookingsService {
         take: pageSize,
         select: {
           id: true,
-          queueCode: true,
           bookingCode: true,
           status: true,
           nameCustomer: true,
@@ -126,11 +128,10 @@ export class BookingsService {
   }
 
   async findOne(id: number) {
-    const booking = await this.prisma.booking.findUnique({
+    const booking = await this.prisma.booking.findFirst({
       where: { id, deletedAt: null, isActive: true },
       select: {
         id: true,
-        queueCode: true,
         bookingCode: true,
         status: true,
         paymentStatus: true,
