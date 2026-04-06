@@ -428,10 +428,6 @@ model Fulfillment {
   recipientName   String?
   recipientPhone  String?
   trackingNumber  String?
-  shippingFee     Float?          @default(0)
-  serviceFee      Float?          @default(0)
-  vatAmount       Float?          @default(0)
-  totalCharge     Float?          @default(0)
   notes           String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -451,6 +447,8 @@ model FulfillmentLog {
   serviceFee      Float
   shippingFee     Float
   vatAmount       Float
+  vatServiceFee   Float   @default(0)
+  vatShippingFee  Float   @default(0)
   totalCharge     Float
   note            String?
   createdAt       DateTime        @default(now())

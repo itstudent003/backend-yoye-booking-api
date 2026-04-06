@@ -414,8 +414,6 @@ async function main() {
       shippingAddress: '99/1 ถ.พระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพฯ 10310',
       type: FulfillmentType.DELIVERY,
       deliveryStatus: DeliveryStatus.NOT_STARTED,
-      serviceFee: 500,
-      shippingFee: 100,
     },
     {
       recipientName: 'นางสาวพิมพ์ชนก มีสุข',
@@ -423,8 +421,6 @@ async function main() {
       shippingAddress: '45/2 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110',
       type: FulfillmentType.DELIVERY,
       deliveryStatus: DeliveryStatus.WAITING_DELIVERY,
-      serviceFee: 300,
-      shippingFee: 80,
     },
     {
       recipientName: 'นายกิตติพงษ์ รุ่งเรือง',
@@ -432,25 +428,18 @@ async function main() {
       shippingAddress: '12 ถ.นิมมานเหมินท์ ต.สุเทพ อ.เมือง จ.เชียงใหม่ 50200',
       type: FulfillmentType.DELIVERY,
       deliveryStatus: DeliveryStatus.DELIVERED,
-      serviceFee: 400,
-      shippingFee: 150,
     },
   ];
 
   for (let i = 0; i < trackingBookings.length && i < mockShipping.length; i++) {
     const booking = trackingBookings[i];
     const mock = mockShipping[i];
-    const totalCharge = mock.serviceFee + mock.shippingFee;
-
     await prisma.fulfillment.upsert({
       where: { bookingId: booking.id },
       create: {
         bookingId: booking.id,
         type: mock.type,
         deliveryStatus: mock.deliveryStatus,
-        serviceFee: mock.serviceFee,
-        shippingFee: mock.shippingFee,
-        totalCharge,
         recipientName: mock.recipientName,
         recipientPhone: mock.recipientPhone,
         shippingAddress: mock.shippingAddress,

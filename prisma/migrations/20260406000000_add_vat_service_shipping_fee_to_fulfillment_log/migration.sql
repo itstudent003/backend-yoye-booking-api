@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "fulfillment_logs" ADD COLUMN "vatServiceFee" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "fulfillment_logs" ADD COLUMN "vatShippingFee" DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -4,6 +4,7 @@ import { BillAction, BookingStatus, FulfillmentType, Prisma } from '@prisma/clie
 import { QueryOrdersDto, TRACKING_STATUSES } from './dto/query-orders.dto';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 
 @Injectable()
 export class FulfillmentsService {
@@ -37,9 +38,6 @@ export class FulfillmentsService {
         select: {
           id: true,
           type: true,
-          serviceFee: true,
-          shippingFee: true,
-          totalCharge: true,
           recipientName: true,
           recipientPhone: true,
           shippingAddress: true,
@@ -75,13 +73,16 @@ export class FulfillmentsService {
     if (!booking) throw new NotFoundException('Booking not found');
 
     const shippingFee = dto.type === FulfillmentType.ETICKET ? 0 : dto.shippingFee;
-    const totalCharge = dto.serviceFee + shippingFee;
+    const vatServiceFee = dto.vatServiceFee ?? 0;
+    const vatShippingFee = dto.vatShippingFee ?? 0;
+    const vatAmount = vatServiceFee + vatShippingFee;
+    const totalCharge = dto.serviceFee + shippingFee + vatAmount;
 
     return this.prisma.$transaction(async (tx) => {
       const upserted = await tx.fulfillment.upsert({
         where: { bookingId },
-        create: { bookingId, type: dto.type, serviceFee: dto.serviceFee, shippingFee, totalCharge },
-        update: { type: dto.type, serviceFee: dto.serviceFee, shippingFee, totalCharge },
+        create: { bookingId, type: dto.type },
+        update: { type: dto.type },
       });
 
       await tx.fulfillmentLog.create({
@@ -92,7 +93,9 @@ export class FulfillmentsService {
           fulfillmentType: dto.type,
           serviceFee: dto.serviceFee,
           shippingFee,
-          vatAmount: 0,
+          vatServiceFee,
+          vatShippingFee,
+          vatAmount,
           totalCharge,
           note: dto.note,
         },
@@ -116,12 +119,15 @@ export class FulfillmentsService {
     if (!fulfillment) throw new NotFoundException('Bill not found for this booking');
 
     const shippingFee = dto.type === FulfillmentType.ETICKET ? 0 : dto.shippingFee;
-    const totalCharge = dto.serviceFee + shippingFee;
+    const vatServiceFee = dto.vatServiceFee ?? 0;
+    const vatShippingFee = dto.vatShippingFee ?? 0;
+    const vatAmount = vatServiceFee + vatShippingFee;
+    const totalCharge = dto.serviceFee + shippingFee + vatAmount;
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.fulfillment.update({
         where: { bookingId },
-        data: { type: dto.type, serviceFee: dto.serviceFee, shippingFee, totalCharge },
+        data: { type: dto.type },
       });
 
       await tx.fulfillmentLog.create({
@@ -132,7 +138,9 @@ export class FulfillmentsService {
           fulfillmentType: dto.type,
           serviceFee: dto.serviceFee,
           shippingFee,
-          vatAmount: 0,
+          vatServiceFee,
+          vatShippingFee,
+          vatAmount,
           totalCharge,
           note: dto.note,
         },
@@ -163,6 +171,40 @@ export class FulfillmentsService {
     ]);
 
     return updated;
+  }
+
+  async updateDeliveryStatus(id: number, dto: UpdateDeliveryStatusDto) {
+    const fulfillment = await this.prisma.fulfillment.findUnique({ where: { id } });
+    if (!fulfillment) throw new NotFoundException('Fulfillment not found');
+
+    return this.prisma.fulfillment.update({
+      where: { id },
+      data: { deliveryStatus: dto.deliveryStatus },
+      select: {
+        id: true,
+        type: true,
+        recipientName: true,
+        recipientPhone: true,
+        shippingAddress: true,
+        deliveryStatus: true,
+      },
+    });
+  }
+
+  async findFulfillmentById(id: number) {
+    const fulfillment = await this.prisma.fulfillment.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        type: true,
+        recipientName: true,
+        recipientPhone: true,
+        shippingAddress: true,
+        deliveryStatus: true,
+      },
+    });
+    if (!fulfillment) throw new NotFoundException('Fulfillment not found');
+    return fulfillment;
   }
 
   async getBillHistory(bookingId: number) {

@@ -4,6 +4,7 @@ import { FulfillmentsService } from './fulfillments.service';
 import { QueryOrdersDto, TRACKING_STATUSES } from './dto/query-orders.dto';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 
 interface AuthUser {
@@ -57,6 +58,18 @@ export class FulfillmentsController {
     @Body() dto: UpdateOrderStatusDto,
   ) {
     return this.fulfillmentsService.updateOrderStatus(+bookingId, req.user.id, dto);
+  }
+
+  @ApiOperation({ summary: 'Get fulfillment by ID' })
+  @Get('fulfillment/:id')
+  findFulfillmentById(@Param('id') id: string) {
+    return this.fulfillmentsService.findFulfillmentById(+id);
+  }
+
+  @ApiOperation({ summary: 'Update delivery status' })
+  @Patch('fulfillment/:id/delivery-status')
+  updateDeliveryStatus(@Param('id') id: string, @Body() dto: UpdateDeliveryStatusDto) {
+    return this.fulfillmentsService.updateDeliveryStatus(+id, dto);
   }
 
   @ApiOperation({ summary: 'Get bill history' })

@@ -18,6 +18,18 @@ export class CreateBillDto {
   @Min(0)
   shippingFee: number;
 
+  @ApiPropertyOptional({ example: 35 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  vatServiceFee?: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  vatShippingFee?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
