@@ -8,6 +8,7 @@ import { BookingsModule } from './(protect)/bookings/bookings.module';
 import { PaymentSlipsModule } from './(protect)/payment-slips/payment-slips.module';
 import { FulfillmentsModule } from './(protect)/fulfillments/fulfillments.module';
 import { RefundRequestsModule } from './(protect)/refund-requests/refund-requests.module';
+import { FinanceModule } from './(protect)/finance/finance.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RefundRequestsModule } from './(protect)/refund-requests/refund-request
     PaymentSlipsModule,
     FulfillmentsModule,
     RefundRequestsModule,
+    FinanceModule,
   ],
 })
 export class AppModule {}
