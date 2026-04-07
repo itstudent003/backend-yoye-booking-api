@@ -9,6 +9,7 @@ import { PaymentSlipsModule } from './(protect)/payment-slips/payment-slips.modu
 import { FulfillmentsModule } from './(protect)/fulfillments/fulfillments.module';
 import { RefundRequestsModule } from './(protect)/refund-requests/refund-requests.module';
 import { FinanceModule } from './(protect)/finance/finance.module';
+import { DashboardModule } from './(protect)/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { FinanceModule } from './(protect)/finance/finance.module';
     FulfillmentsModule,
     RefundRequestsModule,
     FinanceModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
