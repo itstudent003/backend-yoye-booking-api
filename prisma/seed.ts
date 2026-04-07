@@ -46,7 +46,7 @@ async function main() {
       firstName: 'สมหญิง',
       lastName: 'ซุปเปอร์',
       phone: '081-222-2222',
-      role: 'SUPER_ADMIN',
+      role: 'ADMIN',
     },
   });
 

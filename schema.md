@@ -14,7 +14,6 @@ Defines the privilege level of admin users.
 | Value        | Description                          |
 |--------------|--------------------------------------|
 | `ADMIN`      | Standard admin user                  |
-| `SUPER_ADMIN`| Full system access and management    |
 
 ---
 
