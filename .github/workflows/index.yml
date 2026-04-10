@@ -17,4 +17,4 @@ jobs:
             cd backend-yoye-booking-api
             git pull origin main
             cd ~/yoye-project
-            docker-compose up -d --build
+            docker compose up -d --build backend
