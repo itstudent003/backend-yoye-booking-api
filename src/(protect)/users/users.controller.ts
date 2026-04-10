@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -14,6 +14,12 @@ export class UsersController {
   @Post()
   create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto);
+  }
+
+  @ApiOperation({ summary: 'Get current logged-in user' })
+  @Get('me')
+  getMe(@Request() req: { user: { id: number } }) {
+    return this.usersService.findOne(req.user.id);
   }
 
   @Get()

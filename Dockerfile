@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine AS builder
 
 # เปลี่ยนมาลงแค่ตัวที่ยังมีอยู่ใน repo ของ v3.21
 RUN apk add --no-cache openssl libc6-compat

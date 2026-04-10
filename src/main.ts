@@ -23,7 +23,16 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.setGlobalPrefix('api/v1');
-  app.enableCors();
+  app.enableCors({
+    origin: [
+      'https://admin-dev.yoyemuethong.com',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:5173',
+    ],
+    credentials: true,
+  });
 
   const config = new DocumentBuilder()
     .setTitle('Event Booking API')
@@ -35,11 +44,7 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 3001;
-  await app.listen(port, '0.0.0.0'); 
-  app.enableCors({
-  origin: ['https://admin-dev.yoyemuethong.com', 'http://localhost:3000'],
-  credentials: true,
-});
+  await app.listen(port, '0.0.0.0');
   console.log(`Application is running on: http://localhost:${port}/api/v1`);
   console.log(`Swagger docs: http://localhost:${port}/docs`);
 }
