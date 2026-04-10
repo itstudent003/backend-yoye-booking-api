@@ -13,6 +13,6 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /yoye-project/backend-yoye-booking-api
+            cd yoye-project/backend-yoye-booking-api
             git pull origin main
             docker-compose up -d --build
