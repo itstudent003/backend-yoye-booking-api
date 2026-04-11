@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import { join } from 'node:path';
 import * as cookieParser from 'cookie-parser';
 import { ResponseInterceptor } from './(protect)/common/interceptors/response.interceptor';
+import { HttpExceptionFilter } from './(protect)/common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -21,6 +22,7 @@ async function bootstrap() {
     }),
   );
 
+  app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.setGlobalPrefix('api/v1');
   app.enableCors({

@@ -8,8 +8,15 @@ import { QueryRefundRequestDto } from './dto/query-refund-request.dto';
 export class RefundRequestsService {
   constructor(private prisma: PrismaService) {}
 
-  create(dto: CreateRefundRequestDto) {
-    return this.prisma.refundRequest.create({ data: dto });
+  async create(dto: CreateRefundRequestDto) {
+    const { bookingCode, ...rest } = dto;
+
+    const booking = await this.prisma.booking.findUnique({ where: { bookingCode } });
+    if (!booking) throw new NotFoundException(`Booking with code "${bookingCode}" not found`);
+
+    return this.prisma.refundRequest.create({
+      data: { ...rest, bookingId: booking.id },
+    });
   }
 
   async findAll(query: QueryRefundRequestDto) {
