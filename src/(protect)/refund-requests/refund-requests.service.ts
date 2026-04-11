@@ -12,7 +12,7 @@ export class RefundRequestsService {
     const { bookingCode, ...rest } = dto;
 
     const booking = await this.prisma.booking.findUnique({ where: { bookingCode } });
-    if (!booking) throw new NotFoundException(`Booking with code "${bookingCode}" not found`);
+    if (!booking) throw new NotFoundException(`ไม่พบการจองรหัส "${bookingCode}"`);
 
     return this.prisma.refundRequest.create({
       data: { ...rest, bookingId: booking.id },
