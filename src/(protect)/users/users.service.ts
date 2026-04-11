@@ -2,6 +2,8 @@ import { Injectable, ConflictException, NotFoundException } from '@nestjs/common
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { QueryUserDto } from './dto/query-user.dto';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -19,11 +21,41 @@ export class UsersService {
     });
   }
 
-  findAll() {
-    return this.prisma.user.findMany({
-      where: { isActive: true },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, lastLogin: true, createdAt: true },
-    });
+  async findAll(query: QueryUserDto) {
+    const { page = 1, pageSize = 20, search } = query;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.UserWhereInput = {
+      isActive: true,
+      ...(search && {
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' as const } },
+          { lastName: { contains: search, mode: 'insensitive' as const } },
+          { email: { contains: search, mode: 'insensitive' as const } },
+        ],
+      }),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        select: { id: true, email: true, firstName: true, lastName: true, role: true, lastLogin: true, createdAt: true },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        totalCounts: total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
   }
 
   async findOne(id: number) {
