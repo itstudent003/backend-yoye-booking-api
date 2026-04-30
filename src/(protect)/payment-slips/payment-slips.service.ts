@@ -2,11 +2,17 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentSlipDto } from './dto/create-payment-slip.dto';
 import { QueryPaymentSlipDto } from './dto/query-payment-slip.dto';
-import { PaymentSlipStatus, Prisma } from '@prisma/client';
+import { ActivityType, PaymentSlipStatus, PaymentSlipType, Prisma } from '@prisma/client';
+import { DepositService } from '../finance/deposit.service';
+import { ActivityLogService } from '../common/services/activity-log.service';
 
 @Injectable()
 export class PaymentSlipsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private depositService: DepositService,
+    private activityLogService: ActivityLogService,
+  ) {}
 
   create(dto: CreatePaymentSlipDto) {
     return this.prisma.paymentSlip.create({ data: dto });
@@ -78,17 +84,22 @@ export class PaymentSlipsService {
   }
 
   async verify(id: number, reviewerId: number) {
-    await this.findOne(id);
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.paymentSlip.update({
+    const slip = await this.findOne(id);
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.paymentSlip.update({
         where: { id },
         data: { status: PaymentSlipStatus.VERIFIED, reviewerId, reviewedAt: new Date() },
-      }),
-      this.prisma.paymentSlipLog.create({
+      });
+      await tx.paymentSlipLog.create({
         data: { paymentSlipId: id, changedById: reviewerId, status: PaymentSlipStatus.VERIFIED },
-      }),
-    ]);
-    return updated;
+      });
+      await this.activityLogService.log(
+        { actorId: reviewerId, type: ActivityType.SLIP_VERIFIED, bookingId: slip.bookingId, entity: 'PaymentSlip', entityId: id, metadata: { type: slip.type } },
+        tx,
+      );
+      if (slip.type === PaymentSlipType.DEPOSIT_PAID) await this.depositService.recompute(slip.bookingId, tx);
+      return updated;
+    });
   }
 
   async reject(id: number, reviewerId: number, notes?: string) {

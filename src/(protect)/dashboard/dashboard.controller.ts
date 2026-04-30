@@ -20,6 +20,11 @@ export class DashboardController {
     return this.dashboardService.getAlerts(limit ? +limit : 10);
   }
 
+  @Get('actions')
+  getActions() {
+    return this.dashboardService.getActions();
+  }
+
   @Get('activity')
   @ApiQuery({ name: 'limit', required: false, type: Number })
   getActivity(@Query('limit') limit?: string) {

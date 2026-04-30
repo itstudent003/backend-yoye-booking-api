@@ -5,22 +5,22 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { RolesGuard } from './roles.guard';
+import { Roles } from './roles.decorator';
+import { ROLE } from './role.constants';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private readonly authService: AuthService) {}
 
   @ApiOperation({ summary: 'Register a new admin user' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN)
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.authService.register(dto);
-    res.cookie('access_token', result.access_token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-    return result;
+  register(@Body() dto: RegisterDto, @Request() req) {
+    return this.authService.register(dto, req.user);
   }
 
   @ApiOperation({ summary: 'Login with email/password, returns JWT' })
@@ -47,6 +47,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   getProfile(@Request() req) {
+    return this.authService.getProfile(req.user.id);
+  }
+
+  @ApiOperation({ summary: 'Get the current authenticated user' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMe(@Request() req) {
     return this.authService.getProfile(req.user.id);
   }
 }

@@ -12,4 +12,9 @@ export class UpdateStatusRefundRequestDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  payoutSlipUrl?: string;
 }

@@ -1,15 +1,36 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { generateBookingCode } from '../common/utils/generate-booking-code';
-import { Prisma } from '@prisma/client';
+import { AdminRole, Prisma } from '@prisma/client';
+import { DepositService } from '../finance/deposit.service';
+import { ActivityLogService } from '../common/services/activity-log.service';
+import { ROLE } from '../../auth/role.constants';
 
 interface AuthUser {
   id: number;
   firstName: string;
   lastName: string;
+  role?: AdminRole;
+}
+
+const ACTIVITY_TYPE = {
+  BOOKING_STATUS_CHANGED: 'BOOKING_STATUS_CHANGED',
+  PRESSER_ASSIGNED: 'PRESSER_ASSIGNED',
+} as const;
+
+type BookingPresserDelegate = {
+  deleteMany(args: unknown): Promise<unknown>;
+  upsert(args: unknown): Promise<unknown>;
+  findMany(args: unknown): Promise<unknown>;
+  delete(args: unknown): Promise<unknown>;
+  findUnique(args: unknown): Promise<unknown>;
+};
+
+function bookingPresserDelegate(client: PrismaService | Prisma.TransactionClient) {
+  return (client as unknown as { bookingPresser: BookingPresserDelegate }).bookingPresser;
 }
 
 function fullName(user: AuthUser) {
@@ -18,7 +39,11 @@ function fullName(user: AuthUser) {
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly depositService: DepositService,
+    private readonly activityLogService: ActivityLogService,
+  ) {}
 
   async create(dto: CreateBookingDto) {
     const {
@@ -73,7 +98,7 @@ export class BookingsService {
     });
   }
 
-  async findAll(query: QueryBookingDto) {
+  async findAll(query: QueryBookingDto, user?: AuthUser) {
     const { page = 1, pageSize= 20, search, eventId, status } = query;
     const skip = (page - 1) * pageSize;
 
@@ -82,6 +107,9 @@ export class BookingsService {
       isActive: true,
       ...(status && { status }),
       ...(eventId && { eventId }),
+      ...(user?.role === ROLE.PRESSER && {
+        pressers: { some: { presserId: user.id } },
+      }),
       ...(search && {
         OR: [
           { bookingCode: { contains: search, mode: 'insensitive' as const } },
@@ -101,7 +129,9 @@ export class BookingsService {
           bookingCode: true,
           status: true,
           nameCustomer: true,
-          depositPaid: true,
+          ...(user?.role !== ROLE.PRESSER && {
+            depositPaid: true,
+          }),
           createdAt: true,
           event: { select: { id: true, name: true, type: true } },
           customer: { select: { id: true, fullName: true } },
@@ -127,7 +157,9 @@ export class BookingsService {
     };
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, user?: AuthUser) {
+    if (user?.role === ROLE.PRESSER) await this.assertPresserCanAccess(id, user.id);
+
     const booking = await this.prisma.booking.findFirst({
       where: { id, deletedAt: null, isActive: true },
       select: {
@@ -136,23 +168,38 @@ export class BookingsService {
         status: true,
         paymentStatus: true,
         nameCustomer: true,
-        netCardPrice: true,
-        serviceFee: true,
-        shippingFee: true,
-        vatAmount: true,
-        depositPaid: true,
-        totalPaid: true,
-        refundAmount: true,
+        ...(user?.role !== ROLE.PRESSER && {
+          netCardPrice: true,
+          serviceFee: true,
+          shippingFee: true,
+          vatAmount: true,
+          depositPaid: true,
+          totalPaid: true,
+          refundAmount: true,
+        }),
         notes: true,
         createdAt: true,
         createdBy: true,
         updatedAt: true,
         updatedBy: true,
         event: { select: { id: true, name: true, type: true } },
-        customer: { select: { id: true, fullName: true, nickname: true, phone: true, lineId: true } },
+        customer: {
+          select: {
+            id: user?.role !== ROLE.PRESSER,
+            fullName: true,
+            nickname: true,
+            phone: true,
+            lineId: true,
+            ...(user?.role !== ROLE.PRESSER && { email: true }),
+          },
+        },
         bookingItems: { include: { round: true, zone: true } },
         deepInfoResponses: { include: { field: true } },
         formSubmission: true,
+        pressers: {
+          include: { presser: { select: { id: true, firstName: true, lastName: true, email: true, role: true } } },
+        },
+        bookedTickets: { where: { voidedAt: null }, include: { zone: true, pressedBy: { select: { id: true, firstName: true, lastName: true } } } },
         statusLogs: {
           orderBy: { createdAt: 'desc' },
           include: { admin: { select: { id: true, firstName: true, lastName: true } } },
@@ -188,6 +235,18 @@ export class BookingsService {
             notes: dto.notes,
           },
         });
+        await this.activityLogService.log(
+          {
+            actorId: user.id,
+            type: ACTIVITY_TYPE.BOOKING_STATUS_CHANGED,
+            bookingId: id,
+            entity: 'Booking',
+            entityId: id,
+            metadata: { status: dto.status, notes: dto.notes ?? null },
+          },
+          tx,
+        );
+        await this.depositService.recompute(id, tx);
       }
 
       return booking;
@@ -205,5 +264,70 @@ export class BookingsService {
         deletedBy: fullName(user),
       },
     });
+  }
+
+  async assignPressers(id: number, presserIds: number[], user: AuthUser) {
+    await this.findOne(id);
+    const pressers = await this.prisma.user.findMany({
+      where: { id: { in: presserIds }, role: ROLE.PRESSER, isActive: true },
+      select: { id: true },
+    });
+    if (pressers.length !== presserIds.length) {
+      throw new NotFoundException('One or more pressers were not found');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const bookingPresser = bookingPresserDelegate(tx);
+      await bookingPresser.deleteMany({
+        where: { bookingId: id, presserId: { notIn: presserIds } },
+      });
+
+      for (const presserId of presserIds) {
+        await bookingPresser.upsert({
+          where: { bookingId_presserId: { bookingId: id, presserId } },
+          create: { bookingId: id, presserId, assignedBy: user.id },
+          update: { assignedBy: user.id, assignedAt: new Date() },
+        });
+      }
+
+      await this.activityLogService.log(
+        {
+          actorId: user.id,
+          type: ACTIVITY_TYPE.PRESSER_ASSIGNED,
+          bookingId: id,
+          entity: 'Booking',
+          entityId: id,
+          metadata: { presserIds },
+        },
+        tx,
+      );
+
+      return bookingPresser.findMany({
+        where: { bookingId: id },
+        include: { presser: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      });
+    });
+  }
+
+  async removePresser(id: number, presserId: number) {
+    await this.findOne(id);
+    return bookingPresserDelegate(this.prisma).delete({
+      where: { bookingId_presserId: { bookingId: id, presserId } },
+    });
+  }
+
+  async listPressers(id: number, user: AuthUser) {
+    if (user.role === ROLE.PRESSER) await this.assertPresserCanAccess(id, user.id);
+    return bookingPresserDelegate(this.prisma).findMany({
+      where: { bookingId: id },
+      include: { presser: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
+    });
+  }
+
+  async assertPresserCanAccess(bookingId: number, userId: number) {
+    const link = await bookingPresserDelegate(this.prisma).findUnique({
+      where: { bookingId_presserId: { bookingId, presserId: userId } },
+    });
+    if (!link) throw new ForbiddenException();
   }
 }

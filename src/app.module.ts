@@ -10,6 +10,9 @@ import { FulfillmentsModule } from './(protect)/fulfillments/fulfillments.module
 import { RefundRequestsModule } from './(protect)/refund-requests/refund-requests.module';
 import { FinanceModule } from './(protect)/finance/finance.module';
 import { DashboardModule } from './(protect)/dashboard/dashboard.module';
+import { PresserModule } from './(protect)/presser/presser.module';
+import { ExpensesModule } from './(protect)/expenses/expenses.module';
+import { PublicModule } from './public/public.module';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { DashboardModule } from './(protect)/dashboard/dashboard.module';
     RefundRequestsModule,
     FinanceModule,
     DashboardModule,
+    PresserModule,
+    ExpensesModule,
+    PublicModule,
   ],
 })
 export class AppModule {}

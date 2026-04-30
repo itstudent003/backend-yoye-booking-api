@@ -6,6 +6,9 @@ import { QueryRefundRequestDto } from './dto/query-refund-request.dto';
 import { UpdateStatusRefundRequestDto } from './dto/update-status-refund-request.dto';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RefundStatus } from '@prisma/client';
+import { RolesGuard } from '../../auth/roles.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { ROLE } from '../../auth/role.constants';
 
 interface AuthUser {
   id: number;
@@ -15,18 +18,20 @@ interface AuthUser {
 
 @ApiTags('Refund Requests')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('refund-requests')
 export class RefundRequestsController {
   constructor(private readonly refundRequestsService: RefundRequestsService) {}
 
   @ApiOperation({ summary: 'Create a refund request' })
+  @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN)
   @Post()
   create(@Body() dto: CreateRefundRequestDto) {
     return this.refundRequestsService.create(dto);
   }
 
   @ApiOperation({ summary: 'Get all refund requests with optional pagination' })
+  @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN)
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: RefundStatus })
@@ -56,6 +61,6 @@ export class RefundRequestsController {
     @Request() req: { user: AuthUser },
     @Body() dto: UpdateStatusRefundRequestDto,
   ) {
-    return this.refundRequestsService.updateStatus(+id, dto.status, req.user.id, dto.note);
+    return this.refundRequestsService.updateStatus(+id, dto.status, req.user.id, dto.note, dto.payoutSlipUrl);
   }
 }

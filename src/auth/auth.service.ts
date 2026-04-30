@@ -1,20 +1,35 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
+import { AdminRole, User } from '@prisma/client';
+import { ROLE } from './role.constants';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, actor?: User) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already in use');
+
+    const role = dto.role ?? ROLE.ADMIN;
+    if (actor) {
+      if (role === ROLE.SUPER_ADMIN && actor.role !== ROLE.SUPER_ADMIN) {
+        throw new ForbiddenException('Only SUPER_ADMIN can create SUPER_ADMIN users');
+      }
+      if (actor.role === ROLE.ADMIN && ![ROLE.ADMIN, ROLE.PRESSER].includes(role)) {
+        throw new ForbiddenException('ADMIN can create only ADMIN or PRESSER users');
+      }
+      if (actor.role === ROLE.PRESSER) {
+        throw new ForbiddenException('PRESSER cannot create users');
+      }
+    }
 
     const hashed = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
@@ -25,13 +40,11 @@ export class AuthService {
         lastName: dto.lastName,
         line: dto.line,
         phone: dto.phone,
-        role: 'ADMIN',
+        role,
       },
     });
 
-    const payload = { sub: user.id, email: user.email, role: user.role };
     return {
-      access_token: this.jwtService.sign(payload),
       user: {
         id: user.id,
         email: user.email,
@@ -39,6 +52,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
       },
+      message: 'User created successfully',
     };
   }
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BookingStatus, PaymentSlipType, Prisma, RefundStatus } from '@prisma/client';
+import { BookingStatus, DepositReason, DepositStatus, DepositTransactionType, PaymentSlipStatus, PaymentSlipType, Prisma, RefundStatus } from '@prisma/client';
 import { QueryFinanceDepositsDto } from './dto/query-finance-deposits.dto';
 import { QueryFinanceFeesDto } from './dto/query-finance-fees.dto';
 import { QueryFinanceRefundsDto } from './dto/query-finance-refunds.dto';
@@ -18,31 +18,78 @@ export class FinanceService {
   constructor(private prisma: PrismaService) {}
 
   async getSummary() {
-    const [totalAgg, usedAgg, forfeitedAgg, refundedAgg] = await Promise.all([
-      this.prisma.booking.aggregate({
-        _sum: { depositPaid: true },
-        where: { status: { in: DEPOSIT_STATUSES }, deletedAt: null },
+    const [totalAgg, usedAgg, forfeitedAgg, refundedAgg, pendingRefundAgg, pendingRefundCount, outstandingPaymentAgg, outstandingPaymentCount] = await Promise.all([
+      this.prisma.depositTransaction.aggregate({
+        _sum: { amount: true },
+        where: { status: { not: null } },
       }),
-      this.prisma.booking.aggregate({
-        _sum: { depositPaid: true },
-        where: { status: BookingStatus.DEPOSIT_USED, deletedAt: null },
+      this.prisma.depositTransaction.aggregate({
+        _sum: { usedAmount: true },
+        where: { status: DepositStatus.DEPOSIT_USED },
       }),
-      this.prisma.booking.aggregate({
-        _sum: { depositPaid: true },
-        where: { status: BookingStatus.DEPOSIT_FORFEITED, deletedAt: null },
+      this.prisma.depositTransaction.aggregate({
+        _sum: { forfeitedAmount: true },
+        where: { status: DepositStatus.DEPOSIT_FORFEITED },
       }),
       this.prisma.refundRequest.aggregate({
         _sum: { amount: true },
         where: { status: RefundStatus.PAID },
       }),
+      this.prisma.refundRequest.aggregate({
+        _sum: { amount: true },
+        where: { status: RefundStatus.APPROVED },
+      }),
+      this.prisma.refundRequest.count({ where: { status: RefundStatus.APPROVED } }),
+      this.prisma.paymentSlip.aggregate({
+        _sum: { slipAmount: true },
+        where: { status: PaymentSlipStatus.PENDING },
+      }),
+      this.prisma.paymentSlip.count({ where: { status: PaymentSlipStatus.PENDING } }),
     ]);
 
     return {
-      totalDeposit: totalAgg._sum.depositPaid ?? 0,
-      usedAsFee: usedAgg._sum.depositPaid ?? 0,
-      forfeited: forfeitedAgg._sum.depositPaid ?? 0,
+      totalDeposit: totalAgg._sum.amount ?? 0,
+      usedAsFee: usedAgg._sum.usedAmount ?? 0,
+      forfeited: forfeitedAgg._sum.forfeitedAmount ?? 0,
       refunded: refundedAgg._sum.amount ?? 0,
+      pendingRefundAmount: pendingRefundAgg._sum.amount ?? 0,
+      pendingRefundCount,
+      outstandingPaymentAmount: outstandingPaymentAgg._sum.slipAmount ?? 0,
+      outstandingPaymentCount,
     };
+  }
+
+  getDepositByBooking(bookingId: number) {
+    return this.prisma.depositTransaction.findFirst({
+      where: { bookingId, status: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      include: { booking: { select: { bookingCode: true, nameCustomer: true, status: true } }, decidedBy: { select: { id: true, firstName: true, lastName: true } } },
+    });
+  }
+
+  async overrideDeposit(bookingId: number, data: { status: DepositStatus; usedAmount?: number; refundAmount?: number; forfeitedAmount?: number; reasonNotes?: string }, userId: number) {
+    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    if (!booking) return null;
+
+    const existing = await this.prisma.depositTransaction.findFirst({ where: { bookingId, status: { not: null } }, orderBy: { createdAt: 'desc' } });
+    const payload = {
+      bookingId,
+      eventId: booking.eventId,
+      type: DepositTransactionType.HELD,
+      amount: booking.depositPaid,
+      status: data.status,
+      usedAmount: data.usedAmount ?? 0,
+      refundAmount: data.refundAmount ?? 0,
+      forfeitedAmount: data.forfeitedAmount ?? 0,
+      reason: DepositReason.ADMIN_OVERRIDE,
+      reasonNotes: data.reasonNotes,
+      decidedById: userId,
+      decidedAt: new Date(),
+    };
+
+    return existing
+      ? this.prisma.depositTransaction.update({ where: { id: existing.id }, data: payload })
+      : this.prisma.depositTransaction.create({ data: payload });
   }
 
   async getDeposits(query: QueryFinanceDepositsDto) {

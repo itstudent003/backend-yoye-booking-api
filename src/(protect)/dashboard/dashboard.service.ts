@@ -164,6 +164,25 @@ export class DashboardService {
       .slice(0, limit);
   }
 
+  async getActions() {
+    const [pendingSlips, requestedRefunds, approvedRefunds, waitingDeposits, pendingExpenses] = await Promise.all([
+      this.prisma.paymentSlip.count({ where: { status: PaymentSlipStatus.PENDING } }),
+      this.prisma.refundRequest.count({ where: { status: RefundStatus.REQUESTED } }),
+      this.prisma.refundRequest.count({ where: { status: RefundStatus.APPROVED } }),
+      this.prisma.depositTransaction.count({ where: { status: 'WAITING_REFUND' } }),
+      this.prisma.expense.count({ where: { status: 'PENDING' } }),
+    ]);
+
+    return {
+      pendingSlips,
+      requestedRefunds,
+      approvedRefunds,
+      waitingDeposits,
+      pendingExpenses,
+      total: pendingSlips + requestedRefunds + approvedRefunds + waitingDeposits + pendingExpenses,
+    };
+  }
+
   async getActivity(limit = 10) {
     const logs = await this.prisma.bookingStatusLog.findMany({
       orderBy: { createdAt: 'desc' },

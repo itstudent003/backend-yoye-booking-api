@@ -10,6 +10,8 @@ datasource db {
 
 enum AdminRole {
   ADMIN
+  SUPER_ADMIN
+  PRESSER
 }
 
 enum EventType {
@@ -103,11 +105,73 @@ enum DepositTransactionType {
   REFUNDED
 }
 
+enum DepositStatus {
+  DEPOSIT_PENDING
+  DEPOSIT_USED
+  DEPOSIT_FORFEITED
+  WAITING_REFUND
+  REFUNDED
+}
+
+enum DepositReason {
+  PRESS_SUCCESS
+  PRESS_FAILED
+  CUSTOMER_CANCEL
+  CUSTOMER_SELF_BOOKED
+  ADMIN_OVERRIDE
+}
+
 enum RefundStatus {
   REQUESTED
   APPROVED
   REJECTED
   PAID
+}
+
+enum RefundCategory {
+  TICKET
+  DEPOSIT
+  PRICE_DIFF
+  SHIPPING
+  MIXED
+}
+
+enum ExpenseCategory {
+  TRANSPORT
+  EQUIPMENT
+  FOOD
+  SUBSCRIPTION
+  OTHER
+}
+
+enum ExpensePaidBy {
+  COMPANY
+  TEAM
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ActivityType {
+  BOOKING_STATUS_CHANGED
+  SLIP_VERIFIED
+  SLIP_REJECTED
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_REJECTED
+  REFUND_PAID
+  DEPOSIT_OVERRIDE
+  EXPENSE_SUBMITTED
+  EXPENSE_APPROVED
+  EXPENSE_REJECTED
+  PRESSER_ASSIGNED
+  PRESSER_VIEW_CREDENTIAL
+  TICKET_RECORDED
+  TICKET_VOIDED
 }
 
 model User {
@@ -126,13 +190,22 @@ model User {
 
   accounts   Account[]
   sessions   Session[]
-  activities ActivityLog[]
+  activities ActivityLog[] @relation("ActivityUser")
+  activityLogs ActivityLog[] @relation("ActivityActor")
   paymentSlipsReviewed PaymentSlip[] @relation("reviewer")
   statusLogsChanged    BookingStatusLog[]
-  refundsProcessed     RefundRequest[]
+  requestedRefunds      RefundRequest[] @relation("Requested")
+  processedRefunds      RefundRequest[] @relation("Processed")
   refundStatusLogs     RefundRequestLog[] @relation("refundStatusLogs")
   paymentSlipLogs      PaymentSlipLog[]   @relation("paymentSlipLogs")
   fulfillmentLogs      FulfillmentLog[]   @relation("fulfillmentLogs")
+  pressedBookings       BookingPresser[]   @relation("PressedBookings")
+  assignedByLogs        BookingPresser[]   @relation("AssignedBy")
+  pressedTickets        BookedTicket[]     @relation("PressedTickets")
+  voidedTickets         BookedTicket[]     @relation("VoidedTickets")
+  decidedDeposits       DepositTransaction[] @relation("DecidedDeposits")
+  submittedExpenses     Expense[]          @relation("Submitted")
+  approvedExpenses      Expense[]          @relation("Approved")
 
 
   @@map("users")
@@ -188,6 +261,7 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   bookings  Booking[]
+  credentials CustomerCredential[]
 
   @@map("customers")
 }
@@ -213,6 +287,7 @@ model Event {
   deepInfoFields   DeepInfoField[]
   bookings         Booking[]
   deposits         DepositTransaction[]
+  expenses         Expense[]
 
   // audit
   createdAt   DateTime  @default(now())
@@ -250,6 +325,7 @@ model Zone {
   round     ShowRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
 
   bookingItems BookingItem[]
+  bookedTickets BookedTicket[]
 
   createdAt DateTime @default(now())
 }
@@ -303,6 +379,11 @@ model Booking {
   billingRecord    BillingRecord?
   refunds          RefundRequest[]
   deposits         DepositTransaction[]
+  pressers         BookingPresser[]
+  bookedTickets    BookedTicket[]
+  credentials      CustomerCredential[]
+  expenses         Expense[]
+  activityLogs     ActivityLog[]
   formSubmission   FormSubmission?
   bookingItems     BookingItem[]
   deepInfoResponses DeepInfoResponse[]
@@ -326,6 +407,7 @@ model PaymentSlip {
   booking    Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   reviewer   User?             @relation("reviewer", fields: [reviewerId], references: [id])
   statusLogs PaymentSlipLog[]
+  refundRequests RefundRequest[]
 
   @@map("payment_slips")
 }
@@ -370,33 +452,55 @@ model DepositTransaction {
   eventId   Int?
   type      DepositTransactionType
   amount    Float
+  status          DepositStatus?
+  usedAmount      Decimal?      @db.Decimal(10, 2)
+  refundAmount    Decimal?      @db.Decimal(10, 2)
+  forfeitedAmount Decimal?      @db.Decimal(10, 2)
+  reason          DepositReason?
+  reasonNotes     String?
+  decidedById     Int?
+  decidedAt       DateTime?
   notes     String?
   createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
 
   booking Booking? @relation(fields: [bookingId], references: [id])
   event   Event?   @relation(fields: [eventId], references: [id])
+  decidedBy User?  @relation("DecidedDeposits", fields: [decidedById], references: [id])
 
+  @@index([status])
   @@map("deposit_transactions")
 }
 
 model RefundRequest {
   id            Int          @id @default(autoincrement())
   bookingId     Int
+  paymentSlipId Int?
   processedById Int?
+  requestedById Int?
   bookingRef    String?
   bankName      String
   accountNumber String
   accountHolder String
   amount        Float
   status        RefundStatus @default(REQUESTED)
+  category      RefundCategory @default(MIXED)
+  breakdown     Json?
   reason        String?
+  rejectionNote String?
+  payoutSlipUrl String?
+  paidAt        DateTime?
   requestedAt   DateTime     @default(now())
   processedAt   DateTime?
 
   booking     Booking              @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  processedBy User?                @relation(fields: [processedById], references: [id])
+  paymentSlip PaymentSlip?         @relation(fields: [paymentSlipId], references: [id])
+  requestedBy User?                @relation("Requested", fields: [requestedById], references: [id])
+  processedBy User?                @relation("Processed", fields: [processedById], references: [id])
   statusLogs  RefundRequestLog[]
 
+  @@index([status])
+  @@index([bookingId])
   @@map("refund_requests")
 }
 
@@ -475,16 +579,111 @@ model BookingStatusLog {
 
 model ActivityLog {
   id         Int      @id @default(autoincrement())
-  userId     Int
-  entityType String
+  userId     Int?
+  actorId    Int?
+  entityType String?
+  entity     String?
   entityId   Int?
   action     String
+  type       ActivityType?
   metadata   Json?
+  bookingId  Int?
+  bookingCode String?
+  message    String?
   createdAt  DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("ActivityActor", fields: [actorId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
 
+  @@index([entity, entityId])
+  @@index([bookingId])
+  @@index([createdAt])
   @@map("activity_logs")
+}
+
+model BookingPresser {
+  bookingId      Int
+  presserId      Int
+  assignedAt     DateTime @default(now())
+  assignedBy     Int
+  notes          String?
+
+  booking        Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  presser        User    @relation("PressedBookings", fields: [presserId], references: [id])
+  assignedByUser User    @relation("AssignedBy", fields: [assignedBy], references: [id])
+
+  @@id([bookingId, presserId])
+  @@index([presserId])
+  @@map("booking_pressers")
+}
+
+model BookedTicket {
+  id          Int      @id @default(autoincrement())
+  bookingId   Int
+  zoneId      Int?
+  zoneNameRaw String
+  seat        String
+  price       Decimal  @db.Decimal(10, 2)
+  pressedById Int
+  pressedAt   DateTime @default(now())
+  notes       String?
+  voidedAt    DateTime?
+  voidedById  Int?
+
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  zone      Zone?   @relation(fields: [zoneId], references: [id])
+  pressedBy User    @relation("PressedTickets", fields: [pressedById], references: [id])
+  voidedBy  User?   @relation("VoidedTickets", fields: [voidedById], references: [id])
+
+  @@index([bookingId])
+  @@map("booked_tickets")
+}
+
+model Expense {
+  id             Int             @id @default(autoincrement())
+  bookingId      Int?
+  eventId        Int?
+  category       ExpenseCategory
+  description    String
+  amount         Decimal         @db.Decimal(10, 2)
+  paidBy         ExpensePaidBy
+  receiptUrl     String?
+  status         ExpenseStatus   @default(PENDING)
+  submittedById  Int
+  submittedAt    DateTime        @default(now())
+  approvedById   Int?
+  approvedAt     DateTime?
+  rejectedNote   String?
+  settledAt      DateTime?
+  settlementNote String?
+
+  booking     Booking? @relation(fields: [bookingId], references: [id])
+  event       Event?   @relation(fields: [eventId], references: [id])
+  submittedBy User     @relation("Submitted", fields: [submittedById], references: [id])
+  approvedBy  User?    @relation("Approved", fields: [approvedById], references: [id])
+
+  @@index([status])
+  @@index([submittedById])
+  @@map("expenses")
+}
+
+model CustomerCredential {
+  id                Int      @id @default(autoincrement())
+  customerId        Int
+  bookingId         Int?
+  site              String
+  username          String
+  passwordEncrypted String
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  booking  Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@index([customerId])
+  @@map("customer_credentials")
 }
 
 // รายการบัตร/สินค้าที่จองในแต่ละ booking (รองรับทั้ง TICKET และ FORM)
