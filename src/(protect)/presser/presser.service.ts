@@ -25,9 +25,11 @@ export class PresserService {
   ) {}
 
   async listBookings(user: AuthUser, page = 1, pageSize = 20) {
+    const accessibleBookingIds =
+      user.role === ROLE.PRESSER ? await this.getAccessibleBookingIds(user.id) : undefined;
     const where: Prisma.BookingWhereInput =
       user.role === ROLE.PRESSER
-        ? { deletedAt: null, isActive: true, pressers: { some: { presserId: user.id } } }
+        ? { deletedAt: null, isActive: true, id: { in: accessibleBookingIds?.length ? accessibleBookingIds : [-1] } }
         : { deletedAt: null, isActive: true };
 
     const [data, total] = await Promise.all([
@@ -152,7 +154,38 @@ export class PresserService {
 
   private async assertCanAccess(bookingId: number, user: AuthUser) {
     if (user.role !== ROLE.PRESSER) return;
-    const link = await this.prisma.bookingPresser.findUnique({ where: { bookingId_presserId: { bookingId, presserId: user.id } } });
-    if (!link) throw new ForbiddenException();
+    const rows = await this.prisma.$queryRaw<Array<{ allowed: boolean }>>(Prisma.sql`
+      SELECT TRUE AS "allowed"
+      FROM "bookings" b
+      WHERE b."id" = ${bookingId}
+        AND b."deletedAt" IS NULL
+        AND b."isActive" = true
+        AND EXISTS (
+          SELECT 1
+          FROM "booking_pressers" bp
+          WHERE bp."bookingId" = b."id"
+            AND bp."presserId" = ${user.id}
+            AND bp."deletedAt" IS NULL
+        )
+      LIMIT 1
+    `);
+    if (!rows.length) throw new ForbiddenException();
+  }
+
+  private async getAccessibleBookingIds(userId: number) {
+    const rows = await this.prisma.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT DISTINCT b."id"
+      FROM "bookings" b
+      WHERE b."deletedAt" IS NULL
+        AND b."isActive" = true
+        AND EXISTS (
+          SELECT 1
+          FROM "booking_pressers" bp
+          WHERE bp."bookingId" = b."id"
+            AND bp."presserId" = ${userId}
+            AND bp."deletedAt" IS NULL
+        )
+    `);
+    return rows.map((row) => row.id);
   }
 }

@@ -23,9 +23,11 @@ const ACTIVITY_TYPE = {
 
 type BookingPresserDelegate = {
   deleteMany(args: unknown): Promise<unknown>;
+  updateMany(args: unknown): Promise<unknown>;
   upsert(args: unknown): Promise<unknown>;
   findMany(args: unknown): Promise<unknown>;
   delete(args: unknown): Promise<unknown>;
+  update(args: unknown): Promise<unknown>;
   findUnique(args: unknown): Promise<unknown>;
 };
 
@@ -101,6 +103,8 @@ export class BookingsService {
   async findAll(query: QueryBookingDto, user?: AuthUser) {
     const { page = 1, pageSize= 20, search, eventId, status } = query;
     const skip = (page - 1) * pageSize;
+    const accessibleBookingIds =
+      user?.role === ROLE.PRESSER ? await this.getAccessibleBookingIds(user.id) : undefined;
 
     const where: Prisma.BookingWhereInput = {
       deletedAt: null,
@@ -108,7 +112,7 @@ export class BookingsService {
       ...(status && { status }),
       ...(eventId && { eventId }),
       ...(user?.role === ROLE.PRESSER && {
-        pressers: { some: { presserId: user.id } },
+        id: { in: accessibleBookingIds?.length ? accessibleBookingIds : [-1] },
       }),
       ...(search && {
         OR: [
@@ -197,6 +201,7 @@ export class BookingsService {
         deepInfoResponses: { include: { field: true } },
         formSubmission: true,
         pressers: {
+          where: { deletedAt: null },
           include: { presser: { select: { id: true, firstName: true, lastName: true, email: true, role: true } } },
         },
         bookedTickets: { where: { voidedAt: null }, include: { zone: true, pressedBy: { select: { id: true, firstName: true, lastName: true } } } },
@@ -278,15 +283,16 @@ export class BookingsService {
 
     return this.prisma.$transaction(async (tx) => {
       const bookingPresser = bookingPresserDelegate(tx);
-      await bookingPresser.deleteMany({
-        where: { bookingId: id, presserId: { notIn: presserIds } },
+      await bookingPresser.updateMany({
+        where: { bookingId: id, presserId: { notIn: presserIds }, deletedAt: null },
+        data: { deletedAt: new Date(), deletedBy: user.id },
       });
 
       for (const presserId of presserIds) {
         await bookingPresser.upsert({
           where: { bookingId_presserId: { bookingId: id, presserId } },
-          create: { bookingId: id, presserId, assignedBy: user.id },
-          update: { assignedBy: user.id, assignedAt: new Date() },
+          create: { bookingId: id, presserId, assignedBy: user.id, deletedAt: null, deletedBy: null },
+          update: { assignedBy: user.id, assignedAt: new Date(), deletedAt: null, deletedBy: null },
         });
       }
 
@@ -303,31 +309,61 @@ export class BookingsService {
       );
 
       return bookingPresser.findMany({
-        where: { bookingId: id },
+        where: { bookingId: id, deletedAt: null },
         include: { presser: { select: { id: true, firstName: true, lastName: true, email: true } } },
       });
     });
   }
 
-  async removePresser(id: number, presserId: number) {
+  async removePresser(id: number, presserId: number, user?: AuthUser) {
     await this.findOne(id);
-    return bookingPresserDelegate(this.prisma).delete({
+    return bookingPresserDelegate(this.prisma).update({
       where: { bookingId_presserId: { bookingId: id, presserId } },
+      data: { deletedAt: new Date(), deletedBy: user?.id ?? null },
     });
   }
 
   async listPressers(id: number, user: AuthUser) {
     if (user.role === ROLE.PRESSER) await this.assertPresserCanAccess(id, user.id);
     return bookingPresserDelegate(this.prisma).findMany({
-      where: { bookingId: id },
+      where: { bookingId: id, deletedAt: null },
       include: { presser: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
     });
   }
 
   async assertPresserCanAccess(bookingId: number, userId: number) {
-    const link = await bookingPresserDelegate(this.prisma).findUnique({
-      where: { bookingId_presserId: { bookingId, presserId: userId } },
-    });
-    if (!link) throw new ForbiddenException();
+    const rows = await this.prisma.$queryRaw<Array<{ allowed: boolean }>>(Prisma.sql`
+      SELECT TRUE AS "allowed"
+      FROM "bookings" b
+      WHERE b."id" = ${bookingId}
+        AND b."deletedAt" IS NULL
+        AND b."isActive" = true
+        AND EXISTS (
+          SELECT 1
+          FROM "booking_pressers" bp
+          WHERE bp."bookingId" = b."id"
+            AND bp."presserId" = ${userId}
+            AND bp."deletedAt" IS NULL
+        )
+      LIMIT 1
+    `);
+    if (!rows.length) throw new ForbiddenException();
+  }
+
+  private async getAccessibleBookingIds(userId: number) {
+    const rows = await this.prisma.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT DISTINCT b."id"
+      FROM "bookings" b
+      WHERE b."deletedAt" IS NULL
+        AND b."isActive" = true
+        AND EXISTS (
+          SELECT 1
+          FROM "booking_pressers" bp
+          WHERE bp."bookingId" = b."id"
+            AND bp."presserId" = ${userId}
+            AND bp."deletedAt" IS NULL
+        )
+    `);
+    return rows.map((row) => row.id);
   }
 }

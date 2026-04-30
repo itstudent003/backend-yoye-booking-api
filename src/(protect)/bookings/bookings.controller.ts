@@ -54,8 +54,8 @@ export class BookingsController {
 
   @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN)
   @Delete(':id/pressers/:presserId')
-  removePresser(@Param('id') id: string, @Param('presserId') presserId: string) {
-    return this.bookingsService.removePresser(+id, +presserId);
+  removePresser(@Param('id') id: string, @Param('presserId') presserId: string, @Request() req) {
+    return this.bookingsService.removePresser(+id, +presserId, req.user);
   }
 
   @Delete(':id')

@@ -201,6 +201,8 @@ model User {
   fulfillmentLogs      FulfillmentLog[]   @relation("fulfillmentLogs")
   pressedBookings       BookingPresser[]   @relation("PressedBookings")
   assignedByLogs        BookingPresser[]   @relation("AssignedBy")
+  eventPressers         EventPresser[]      @relation("EventPressers")
+  eventPresserAssignments EventPresser[]    @relation("EventPresserAssignedBy")
   pressedTickets        BookedTicket[]     @relation("PressedTickets")
   voidedTickets         BookedTicket[]     @relation("VoidedTickets")
   decidedDeposits       DepositTransaction[] @relation("DecidedDeposits")
@@ -288,6 +290,7 @@ model Event {
   bookings         Booking[]
   deposits         DepositTransaction[]
   expenses         Expense[]
+  pressers         EventPresser[]
 
   // audit
   createdAt   DateTime  @default(now())
@@ -608,6 +611,8 @@ model BookingPresser {
   assignedAt     DateTime @default(now())
   assignedBy     Int
   notes          String?
+  deletedAt      DateTime?
+  deletedBy      Int?
 
   booking        Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   presser        User    @relation("PressedBookings", fields: [presserId], references: [id])
@@ -615,7 +620,27 @@ model BookingPresser {
 
   @@id([bookingId, presserId])
   @@index([presserId])
+  @@index([deletedAt])
   @@map("booking_pressers")
+}
+
+model EventPresser {
+  eventId        Int
+  presserId      Int
+  assignedAt     DateTime @default(now())
+  assignedBy     Int
+  notes          String?
+  deletedAt      DateTime?
+  deletedBy      Int?
+
+  event          Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  presser        User  @relation("EventPressers", fields: [presserId], references: [id])
+  assignedByUser User  @relation("EventPresserAssignedBy", fields: [assignedBy], references: [id])
+
+  @@id([eventId, presserId])
+  @@index([presserId])
+  @@index([deletedAt])
+  @@map("event_pressers")
 }
 
 model BookedTicket {

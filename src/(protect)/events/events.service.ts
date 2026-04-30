@@ -6,8 +6,11 @@ import { CreateTicketEventDto } from './dto/create-ticket-event.dto';
 import { CreateFormEventDto } from './dto/create-form-event.dto';
 import { UpdateTicketEventDto } from './dto/update-ticket-event.dto';
 import { UpdateFormEventDto } from './dto/update-form-event.dto';
+import { Prisma } from '@prisma/client';
+import { ROLE } from '../../auth/role.constants';
 
 interface AuthUser {
+  id: number;
   firstName: string;
   lastName: string;
 }
@@ -244,6 +247,102 @@ export class EventsService {
     });
     if (!event) throw new NotFoundException('Event not found');
     return event;
+  }
+
+  async findPressers(id: number) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const data = await this.prisma.$queryRaw<
+      Array<{
+        id: number;
+        email: string;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        line: string | null;
+        assignedAt: Date;
+      }>
+    >(Prisma.sql`
+      SELECT
+        u."id",
+        u."email",
+        u."firstName",
+        u."lastName",
+        u."phone",
+        u."line",
+        ep."assignedAt"
+      FROM "event_pressers" ep
+      JOIN "users" u ON u."id" = ep."presserId"
+      WHERE ep."eventId" = ${id}
+        AND ep."deletedAt" IS NULL
+        AND u."isActive" = true
+      ORDER BY u."firstName" ASC, u."lastName" ASC
+    `);
+
+    return { data };
+  }
+
+  async assignPressers(id: number, presserIds: number[], user: AuthUser) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const uniquePresserIds = [...new Set(presserIds.map(Number).filter(Boolean))];
+    if (!uniquePresserIds.length) return this.findPressers(id);
+
+    const pressers = await this.prisma.user.findMany({
+      where: { id: { in: uniquePresserIds }, role: ROLE.PRESSER, isActive: true },
+      select: { id: true },
+    });
+    if (pressers.length !== uniquePresserIds.length) {
+      throw new NotFoundException('One or more pressers were not found');
+    }
+
+    await this.prisma.$transaction(
+      uniquePresserIds.map((presserId) =>
+        this.prisma.$executeRaw(Prisma.sql`
+          INSERT INTO "event_pressers" ("eventId", "presserId", "assignedBy", "assignedAt", "deletedAt", "deletedBy")
+          VALUES (${id}, ${presserId}, ${user.id}, NOW(), NULL, NULL)
+          ON CONFLICT ("eventId", "presserId")
+          DO UPDATE SET
+            "assignedBy" = EXCLUDED."assignedBy",
+            "assignedAt" = NOW(),
+            "deletedAt" = NULL,
+            "deletedBy" = NULL
+        `),
+      ),
+    );
+
+    return this.findPressers(id);
+  }
+
+  async removePresser(id: number, presserId: number, user?: AuthUser) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const result = await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE "event_pressers"
+      SET "deletedAt" = NOW(),
+          "deletedBy" = ${user?.id ?? null}
+      WHERE "eventId" = ${id}
+        AND "presserId" = ${presserId}
+        AND "deletedAt" IS NULL
+    `);
+
+    return {
+      eventId: id,
+      presserId,
+      removedAssignments: result,
+    };
   }
 
   async updateTicket(id: number, dto: UpdateTicketEventDto, user: AuthUser, file?: Express.Multer.File) {

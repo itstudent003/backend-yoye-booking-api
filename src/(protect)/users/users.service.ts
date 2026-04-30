@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateUserDto) {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
@@ -22,11 +22,12 @@ export class UsersService {
   }
 
   async findAll(query: QueryUserDto) {
-    const { page = 1, pageSize = 20, search } = query;
+    const { page = 1, pageSize = 20, search, role } = query;
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.UserWhereInput = {
       isActive: true,
+      ...(role && { role: role as never }),
       ...(search && {
         OR: [
           { firstName: { contains: search, mode: 'insensitive' as const } },

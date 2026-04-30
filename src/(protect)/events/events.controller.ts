@@ -64,6 +64,28 @@ export class EventsController {
     return this.eventsService.findAll(+page, +pageSize, search, type);
   }
 
+  @ApiOperation({ summary: 'Get pressers assigned to bookings in an event' })
+  @Get(':id/pressers')
+  findPressers(@Param('id') id: string) {
+    return this.eventsService.findPressers(+id);
+  }
+
+  @ApiOperation({ summary: 'Assign pressers to an event before bookings exist' })
+  @Post(':id/pressers')
+  assignPressers(
+    @Param('id') id: string,
+    @Body('presserIds') presserIds: number[],
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.eventsService.assignPressers(+id, presserIds ?? [], req.user);
+  }
+
+  @ApiOperation({ summary: 'Remove a presser from all bookings in an event' })
+  @Delete(':id/pressers/:presserId')
+  removePresser(@Param('id') id: string, @Param('presserId') presserId: string, @Request() req: { user: AuthUser }) {
+    return this.eventsService.removePresser(+id, +presserId, req.user);
+  }
+
   @ApiOperation({ summary: 'Get event by ID' })
   @Get(':id')
   findOne(@Param('id') id: string) {
