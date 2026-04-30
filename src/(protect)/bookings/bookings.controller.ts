@@ -48,8 +48,8 @@ export class BookingsController {
 
   @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.PRESSER)
   @Get(':id/pressers')
-  listPressers(@Param('id') id: string, @Request() req) {
-    return this.bookingsService.listPressers(+id, req.user);
+  listPressers(@Param('id') id: string, @Request() req, @Query('search') search?: string) {
+    return this.bookingsService.listPressers(+id, req.user, search);
   }
 
   @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN)

@@ -70,16 +70,6 @@ export class EventsController {
     return this.eventsService.findPressers(+id);
   }
 
-  @ApiOperation({ summary: 'Assign pressers to an event before bookings exist' })
-  @Post(':id/pressers')
-  assignPressers(
-    @Param('id') id: string,
-    @Body('presserIds') presserIds: number[],
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.eventsService.assignPressers(+id, presserIds ?? [], req.user);
-  }
-
   @ApiOperation({ summary: 'Remove a presser from all bookings in an event' })
   @Delete(':id/pressers/:presserId')
   removePresser(@Param('id') id: string, @Param('presserId') presserId: string, @Request() req: { user: AuthUser }) {

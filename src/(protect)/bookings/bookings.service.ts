@@ -323,11 +323,83 @@ export class BookingsService {
     });
   }
 
-  async listPressers(id: number, user: AuthUser) {
+  async listPressers(id: number, user: AuthUser, search?: string) {
+    await this.findOne(id);
     if (user.role === ROLE.PRESSER) await this.assertPresserCanAccess(id, user.id);
-    return bookingPresserDelegate(this.prisma).findMany({
+
+    const assignedPressers = (await bookingPresserDelegate(this.prisma).findMany({
+      where: { bookingId: id, deletedAt: null },
+      include: { presser: { select: { id: true } } },
+    })) as Array<{
+      presser?: {
+        id?: number;
+      };
+    }>;
+    const assignedPresserIds = new Set(assignedPressers.map(({ presser }) => presser?.id).filter(Boolean));
+
+    const pressers = (await this.prisma.user.findMany({
+      where: { role: ROLE.PRESSER, isActive: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        line: true,
+        createdAt: true,
+      },
+    })) as Array<{
+      id: number;
+      email: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+      line?: string | null;
+      createdAt: Date;
+    }>;
+
+    const data = pressers.map((presser) => ({
+      ...presser,
+      isAssigned: assignedPresserIds.has(presser.id),
+    }));
+
+    const keyword = search?.trim().toLowerCase();
+    if (!keyword) return data;
+
+    return data.filter((presser) => {
+      const firstName = presser.firstName ?? '';
+      const lastName = presser.lastName ?? '';
+      const fullName = `${firstName} ${lastName}`.trim().toLowerCase();
+      const reverseFullName = `${lastName} ${firstName}`.trim().toLowerCase();
+      const email = presser.email?.toLowerCase() ?? '';
+      return fullName.includes(keyword) || reverseFullName.includes(keyword) || email.includes(keyword);
+    });
+  }
+
+  async listAssignedPressers(id: number, user: AuthUser, search?: string) {
+    if (user.role === ROLE.PRESSER) await this.assertPresserCanAccess(id, user.id);
+    const pressers = (await bookingPresserDelegate(this.prisma).findMany({
       where: { bookingId: id, deletedAt: null },
       include: { presser: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
+    })) as Array<{
+      presser?: {
+        firstName?: string | null;
+        lastName?: string | null;
+        email?: string | null;
+      };
+    }>;
+
+    const keyword = search?.trim().toLowerCase();
+    if (!keyword) return pressers;
+
+    return pressers.filter(({ presser }) => {
+      const firstName = presser?.firstName ?? '';
+      const lastName = presser?.lastName ?? '';
+      const fullName = `${firstName} ${lastName}`.trim().toLowerCase();
+      const reverseFullName = `${lastName} ${firstName}`.trim().toLowerCase();
+      const email = presser?.email?.toLowerCase() ?? '';
+      return fullName.includes(keyword) || reverseFullName.includes(keyword) || email.includes(keyword);
     });
   }
 

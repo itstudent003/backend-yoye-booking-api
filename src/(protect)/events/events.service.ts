@@ -7,7 +7,6 @@ import { CreateFormEventDto } from './dto/create-form-event.dto';
 import { UpdateTicketEventDto } from './dto/update-ticket-event.dto';
 import { UpdateFormEventDto } from './dto/update-form-event.dto';
 import { Prisma } from '@prisma/client';
-import { ROLE } from '../../auth/role.constants';
 
 interface AuthUser {
   id: number;
@@ -284,42 +283,6 @@ export class EventsService {
     `);
 
     return { data };
-  }
-
-  async assignPressers(id: number, presserIds: number[], user: AuthUser) {
-    const event = await this.prisma.event.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!event) throw new NotFoundException('Event not found');
-
-    const uniquePresserIds = [...new Set(presserIds.map(Number).filter(Boolean))];
-    if (!uniquePresserIds.length) return this.findPressers(id);
-
-    const pressers = await this.prisma.user.findMany({
-      where: { id: { in: uniquePresserIds }, role: ROLE.PRESSER, isActive: true },
-      select: { id: true },
-    });
-    if (pressers.length !== uniquePresserIds.length) {
-      throw new NotFoundException('One or more pressers were not found');
-    }
-
-    await this.prisma.$transaction(
-      uniquePresserIds.map((presserId) =>
-        this.prisma.$executeRaw(Prisma.sql`
-          INSERT INTO "event_pressers" ("eventId", "presserId", "assignedBy", "assignedAt", "deletedAt", "deletedBy")
-          VALUES (${id}, ${presserId}, ${user.id}, NOW(), NULL, NULL)
-          ON CONFLICT ("eventId", "presserId")
-          DO UPDATE SET
-            "assignedBy" = EXCLUDED."assignedBy",
-            "assignedAt" = NOW(),
-            "deletedAt" = NULL,
-            "deletedBy" = NULL
-        `),
-      ),
-    );
-
-    return this.findPressers(id);
   }
 
   async removePresser(id: number, presserId: number, user?: AuthUser) {
