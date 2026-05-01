@@ -35,7 +35,7 @@ export class FinanceController {
     return this.financeService.getDepositByBooking(+bookingId);
   }
 
-  @Roles(ROLE.SUPER_ADMIN)
+  @Roles(ROLE.SUPER_ADMIN, ROLE.ADMIN)
   @ApiOperation({ summary: 'Override deposit decision' })
   @Patch('deposits/:bookingId/override')
   overrideDeposit(

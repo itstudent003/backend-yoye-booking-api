@@ -16,8 +16,13 @@ export class PresserController {
 
   @Roles(ROLE.PRESSER, ROLE.ADMIN, ROLE.SUPER_ADMIN)
   @Get('bookings')
-  listBookings(@Request() req, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
-    return this.presserService.listBookings(req.user, page ? +page : 1, pageSize ? +pageSize : 20);
+  listBookings(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.presserService.listBookings(req.user, page ? +page : 1, pageSize ? +pageSize : 20, search);
   }
 
   @Roles(ROLE.PRESSER, ROLE.ADMIN, ROLE.SUPER_ADMIN)

@@ -14,7 +14,37 @@ const ALLOWED_PRESSER_STATUSES: BookingStatus[] = [
   BookingStatus.PARTIALLY_BOOKED,
 ];
 
+const HIDDEN_PRESSER_LIST_STATUSES: BookingStatus[] = [
+  BookingStatus.COMPLETED,
+  BookingStatus.CANCELLED,
+  BookingStatus.CLOSED_REFUNDED,
+];
+
 type AuthUser = { id: number; role: AdminRole; firstName?: string; lastName?: string };
+
+type RecordedTicketResponse = {
+  zoneId: number | null;
+  zoneName: string;
+  seat: string;
+  price: unknown;
+  notes: string | null;
+};
+
+function toRecordedTicketResponse(ticket: {
+  zoneId?: number | null;
+  zoneNameRaw: string;
+  seat: string;
+  price: unknown;
+  notes?: string | null;
+}): RecordedTicketResponse {
+  return {
+    zoneId: ticket.zoneId ?? null,
+    zoneName: ticket.zoneNameRaw,
+    seat: ticket.seat,
+    price: ticket.price,
+    notes: ticket.notes ?? null,
+  };
+}
 
 @Injectable()
 export class PresserService {
@@ -24,13 +54,32 @@ export class PresserService {
     private activityLogService: ActivityLogService,
   ) {}
 
-  async listBookings(user: AuthUser, page = 1, pageSize = 20) {
+  async listBookings(user: AuthUser, page = 1, pageSize = 20, search?: string) {
     const accessibleBookingIds =
       user.role === ROLE.PRESSER ? await this.getAccessibleBookingIds(user.id) : undefined;
+    const keyword = search?.trim();
     const where: Prisma.BookingWhereInput =
       user.role === ROLE.PRESSER
-        ? { deletedAt: null, isActive: true, id: { in: accessibleBookingIds?.length ? accessibleBookingIds : [-1] } }
-        : { deletedAt: null, isActive: true };
+        ? {
+            deletedAt: null,
+            isActive: true,
+            id: { in: accessibleBookingIds?.length ? accessibleBookingIds : [-1] },
+            status: { notIn: HIDDEN_PRESSER_LIST_STATUSES },
+          }
+        : {
+            deletedAt: null,
+            isActive: true,
+            status: { notIn: HIDDEN_PRESSER_LIST_STATUSES },
+          };
+    if (keyword) {
+      where.OR = [
+        { bookingCode: { contains: keyword, mode: 'insensitive' } },
+        { nameCustomer: { contains: keyword, mode: 'insensitive' } },
+        { event: { name: { contains: keyword, mode: 'insensitive' } } },
+        { customer: { fullName: { contains: keyword, mode: 'insensitive' } } },
+        { customer: { nickname: { contains: keyword, mode: 'insensitive' } } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.booking.findMany({
@@ -43,17 +92,87 @@ export class PresserService {
           bookingCode: true,
           status: true,
           nameCustomer: true,
+          notes: true,
           createdAt: true,
           event: { select: { id: true, name: true, type: true, eventDate: true } },
-          customer: { select: { fullName: true, phone: true, lineId: true } },
-          bookingItems: { select: { quantity: true, round: true, zone: true } },
-          bookedTickets: { where: { voidedAt: null } },
+          customer: { select: { fullName: true, nickname: true, phone: true, lineId: true } },
+          bookingItems: {
+            select: {
+              id: true,
+              quantity: true,
+              notes: true,
+              round: { select: { id: true, name: true, date: true, time: true } },
+              zone: { select: { id: true, name: true, price: true, fee: true } },
+            },
+          },
+          credentials: {
+            select: {
+              id: true,
+              site: true,
+              username: true,
+              passwordEncrypted: true,
+              notes: true,
+              createdAt: true,
+            },
+          },
+          deepInfoResponses: {
+            select: {
+              value: true,
+              field: { select: { id: true, label: true, otherCode: true } },
+            },
+          },
+          bookedTickets: {
+            where: { voidedAt: null },
+            select: {
+              id: true,
+              zoneId: true,
+              zoneNameRaw: true,
+              seat: true,
+              price: true,
+              pressedAt: true,
+              notes: true,
+            },
+          },
         },
       }),
       this.prisma.booking.count({ where }),
     ]);
 
-    return { data, pagination: { totalCounts: total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    return {
+      data: data.map((booking) => {
+        const bookingItems = booking.bookingItems.map((item) => ({
+          id: item.id,
+          name: item.zone?.name ?? item.notes ?? null,
+          quantity: item.quantity,
+          price: item.zone?.price ?? null,
+          fee: item.zone?.fee ?? null,
+          notes: item.notes,
+          round: item.round,
+          zone: item.zone,
+        }));
+        const firstRound = booking.bookingItems.find((item) => item.round)?.round ?? null;
+        return {
+          ...booking,
+          round: firstRound,
+          zones: bookingItems,
+          bookingItems,
+          zonesBackup: [],
+          credentials: booking.credentials.map((credential) => ({
+            ...credential,
+            password: null,
+          })),
+          paymentMethod: null,
+          paymentType: null,
+          deepInfo: booking.deepInfoResponses.map((response) => ({
+            id: response.field.id,
+            label: response.field.label,
+            otherCode: response.field.otherCode,
+            value: response.value,
+          })),
+        };
+      }),
+      pagination: { totalCounts: total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
   }
 
   async getBooking(id: number, user: AuthUser) {
@@ -120,7 +239,8 @@ export class PresserService {
         tx,
       );
       await this.depositService.recompute(id, tx);
-      return Array.isArray(input) ? created : created[0];
+      const response = created.map(toRecordedTicketResponse);
+      return Array.isArray(input) ? response : response[0];
     });
   }
 

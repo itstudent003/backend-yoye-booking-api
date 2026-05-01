@@ -213,10 +213,39 @@ export class BookingsService {
           orderBy: { createdAt: 'desc' },
           include: { reviewer: { select: { id: true, firstName: true, lastName: true } } },
         },
+        ...(user?.role !== ROLE.PRESSER && {
+          deposits: {
+            where: { status: { not: null } },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              usedAmount: true,
+              refundAmount: true,
+              forfeitedAmount: true,
+              reason: true,
+              reasonNotes: true,
+              decidedAt: true,
+              decidedBy: { select: { id: true, firstName: true, lastName: true } },
+            },
+          },
+        }),
       },
     });
     if (!booking) throw new NotFoundException('Booking not found');
     return booking;
+  }
+
+  async getStatusLogs(bookingId: number) {
+    return this.prisma.bookingStatusLog.findMany({
+      where: { bookingId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        admin: { select: { id: true, firstName: true, lastName: true, role: true } },
+      },
+    });
   }
 
   async update(id: number, dto: UpdateBookingDto, user: AuthUser) {

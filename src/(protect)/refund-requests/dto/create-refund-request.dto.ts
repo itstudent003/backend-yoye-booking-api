@@ -1,4 +1,5 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString, IsNumber, IsObject } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const REFUND_CATEGORY = {
@@ -33,8 +34,10 @@ export class CreateRefundRequestDto {
   accountHolder: string;
 
   @ApiProperty()
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
-  amount: number;
+  amount?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

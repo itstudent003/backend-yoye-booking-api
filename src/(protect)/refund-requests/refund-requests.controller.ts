@@ -42,6 +42,13 @@ export class RefundRequestsController {
     return this.refundRequestsService.findAll(query);
   }
 
+  @ApiOperation({ summary: 'Suggest refund breakdown from booking/payment data' })
+  @Roles(ROLE.ADMIN, ROLE.SUPER_ADMIN)
+  @Get('suggest/:bookingCode')
+  suggest(@Param('bookingCode') bookingCode: string) {
+    return this.refundRequestsService.suggest(bookingCode);
+  }
+
   @ApiOperation({ summary: 'Get refund requests by booking ID' })
   @Get('booking/:bookingId')
   findByBooking(@Param('bookingId') bookingId: string) {
@@ -61,6 +68,6 @@ export class RefundRequestsController {
     @Request() req: { user: AuthUser },
     @Body() dto: UpdateStatusRefundRequestDto,
   ) {
-    return this.refundRequestsService.updateStatus(+id, dto.status, req.user.id, dto.note, dto.payoutSlipUrl);
+    return this.refundRequestsService.updateStatus(+id, dto.status, req.user.id, dto.note, dto.payoutSlipUrl, dto.paidAt);
   }
 }

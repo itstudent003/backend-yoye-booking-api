@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { RefundStatus } from '@prisma/client';
 
 export class UpdateStatusRefundRequestDto {
@@ -17,4 +17,9 @@ export class UpdateStatusRefundRequestDto {
   @IsOptional()
   @IsString()
   payoutSlipUrl?: string;
+
+  @ApiPropertyOptional({ description: 'วันและเวลาโอนคืนจริงตามสลิป' })
+  @IsOptional()
+  @IsDateString()
+  paidAt?: string;
 }

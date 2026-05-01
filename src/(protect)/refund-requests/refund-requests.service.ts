@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRefundRequestDto } from './dto/create-refund-request.dto';
-import { Prisma, RefundStatus } from '@prisma/client';
+import { BookingStatus, PaymentSlipStatus, PaymentSlipType, Prisma, RefundCategory, RefundStatus } from '@prisma/client';
 import { QueryRefundRequestDto } from './dto/query-refund-request.dto';
 import { ActivityLogService } from '../common/services/activity-log.service';
 
@@ -20,6 +20,49 @@ const REFUND_CATEGORY = {
   DEPOSIT: 'DEPOSIT',
 } as const;
 
+type RefundBreakdown = {
+  ticket?: number;
+  deposit?: number;
+  priceDiff?: number;
+  shipping?: number;
+  other?: number;
+};
+
+const BREAKDOWN_KEYS: Array<keyof RefundBreakdown> = ['ticket', 'deposit', 'priceDiff', 'shipping', 'other'];
+const FULL_REFUND_STATUSES: BookingStatus[] = [BookingStatus.BOOKING_FAILED, BookingStatus.TEAM_NOT_RECEIVED];
+const PARTIAL_REFUND_STATUSES: BookingStatus[] = [BookingStatus.PARTIALLY_BOOKED, BookingStatus.PARTIAL_SELF_TEAM_BOOKING];
+const WAITING_REFUND_STATUSES: BookingStatus[] = [BookingStatus.WAITING_REFUND, BookingStatus.REFUNDED, BookingStatus.CLOSED_REFUNDED];
+
+function normalizeMoney(value: unknown) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+function normalizeBreakdown(input?: Record<string, number> | null): RefundBreakdown {
+  const breakdown: RefundBreakdown = {};
+  for (const key of BREAKDOWN_KEYS) {
+    const value = normalizeMoney(input?.[key]);
+    if (value > 0) breakdown[key] = value;
+  }
+  return breakdown;
+}
+
+function sumBreakdown(breakdown: RefundBreakdown) {
+  return BREAKDOWN_KEYS.reduce((sum, key) => sum + normalizeMoney(breakdown[key]), 0);
+}
+
+function categoryFromBreakdown(breakdown: RefundBreakdown): RefundCategory {
+  const active = BREAKDOWN_KEYS.filter((key) => normalizeMoney(breakdown[key]) > 0);
+  if (active.length !== 1) return RefundCategory.MIXED;
+  const [key] = active;
+  if (key === 'ticket') return RefundCategory.TICKET;
+  if (key === 'deposit') return RefundCategory.DEPOSIT;
+  if (key === 'priceDiff') return RefundCategory.PRICE_DIFF;
+  if (key === 'shipping') return RefundCategory.SHIPPING;
+  return RefundCategory.MIXED;
+}
+
 @Injectable()
 export class RefundRequestsService {
   constructor(
@@ -28,14 +71,119 @@ export class RefundRequestsService {
   ) {}
 
   async create(dto: CreateRefundRequestDto) {
-    const { bookingCode, ...rest } = dto;
+    const { bookingCode, breakdown: rawBreakdown, amount: rawAmount, category, ...rest } = dto;
 
     const booking = await this.prisma.booking.findUnique({ where: { bookingCode } });
     if (!booking) throw new NotFoundException(`ไม่พบการจองรหัส "${bookingCode}"`);
 
+    const breakdown = normalizeBreakdown(rawBreakdown);
+    const breakdownTotal = sumBreakdown(breakdown);
+    const amount = breakdownTotal > 0 ? breakdownTotal : normalizeMoney(rawAmount);
+
     return this.prisma.refundRequest.create({
-      data: { ...rest, bookingId: booking.id, bookingRef: booking.bookingCode },
+      data: {
+        ...rest,
+        amount,
+        category: category ?? categoryFromBreakdown(breakdown),
+        breakdown: Object.keys(breakdown).length > 0 ? breakdown : undefined,
+        bookingId: booking.id,
+        bookingRef: booking.bookingCode,
+      },
     });
+  }
+
+  async suggest(bookingCode: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { bookingCode },
+      include: {
+        event: { select: { id: true, name: true } },
+        paymentSlips: {
+          where: { status: PaymentSlipStatus.VERIFIED },
+          select: { type: true, slipAmount: true },
+        },
+        deposits: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { usedAmount: true, refundAmount: true, forfeitedAmount: true },
+        },
+      },
+    });
+    if (!booking) throw new NotFoundException(`ไม่พบการจองรหัส "${bookingCode}"`);
+
+    const paidByType = (type: PaymentSlipType) =>
+      booking.paymentSlips
+        .filter((slip) => slip.type === type)
+        .reduce((sum, slip) => sum + normalizeMoney(slip.slipAmount), 0);
+
+    const cardPaid = paidByType(PaymentSlipType.CARD_PAID);
+    const depositPaid = normalizeMoney(booking.depositPaid);
+    const servicePaid = paidByType(PaymentSlipType.SERVICE_PAID);
+    const depositTx = booking.deposits[0];
+    const depositUsed = normalizeMoney(depositTx?.usedAmount);
+    const depositRefund = normalizeMoney(depositTx?.refundAmount);
+    const depositForfeited = normalizeMoney(depositTx?.forfeitedAmount);
+
+    let breakdown: RefundBreakdown = {};
+    if (FULL_REFUND_STATUSES.includes(booking.status)) {
+      breakdown = {
+        deposit: depositRefund || depositPaid,
+        ticket: cardPaid,
+      };
+    } else if (PARTIAL_REFUND_STATUSES.includes(booking.status)) {
+      breakdown = {
+        priceDiff: Math.max(
+          normalizeMoney(booking.totalPaid) -
+            normalizeMoney(booking.netCardPrice) -
+            normalizeMoney(booking.serviceFee) -
+            normalizeMoney(booking.shippingFee) +
+            depositUsed,
+          0,
+        ),
+      };
+    } else if (booking.status === BookingStatus.CANCELLED) {
+      breakdown = {
+        ticket: cardPaid,
+        deposit: depositForfeited > 0 ? 0 : depositRefund,
+      };
+    } else if (WAITING_REFUND_STATUSES.includes(booking.status)) {
+      breakdown = {
+        deposit: depositRefund,
+        priceDiff: normalizeMoney(booking.refundAmount),
+      };
+    } else {
+      breakdown = {
+        ticket: Math.max(cardPaid - normalizeMoney(booking.netCardPrice), 0),
+        deposit: depositRefund,
+        shipping: Math.max(servicePaid - normalizeMoney(booking.serviceFee), 0),
+      };
+    }
+
+    breakdown = normalizeBreakdown(breakdown);
+    const total = sumBreakdown(breakdown);
+
+    return {
+      booking: {
+        id: booking.id,
+        bookingCode: booking.bookingCode,
+        nameCustomer: booking.nameCustomer,
+        status: booking.status,
+        event: booking.event,
+      },
+      amount: total,
+      category: categoryFromBreakdown(breakdown),
+      breakdown,
+      source: {
+        totalPaid: normalizeMoney(booking.totalPaid),
+        cardPaid,
+        depositPaid,
+        depositUsed,
+        depositRefund,
+        depositForfeited,
+        netCardPrice: normalizeMoney(booking.netCardPrice),
+        serviceFee: normalizeMoney(booking.serviceFee),
+        shippingFee: normalizeMoney(booking.shippingFee),
+      },
+    };
   }
 
   async findAll(query: QueryRefundRequestDto) {
@@ -120,7 +268,7 @@ export class RefundRequestsService {
     return refund;
   }
 
-  async updateStatus(id: number, status: RefundStatus, processedById: number, note?: string, payoutSlipUrl?: string) {
+  async updateStatus(id: number, status: RefundStatus, processedById: number, note?: string, payoutSlipUrl?: string, paidAt?: string) {
     const refund = await this.findOne(id);
     if (refund.status === RefundStatus.PAID || refund.status === RefundStatus.REJECTED) {
       throw new BadRequestException('Refund request is already terminal');
@@ -133,8 +281,10 @@ export class RefundRequestsService {
     }
     if (status === RefundStatus.REJECTED && !note) throw new BadRequestException('rejectionNote is required');
     if (status === RefundStatus.PAID && !payoutSlipUrl) throw new BadRequestException('payoutSlipUrl is required');
+    if (status === RefundStatus.PAID && !paidAt) throw new BadRequestException('paidAt is required');
 
     return this.prisma.$transaction(async (tx) => {
+      const actualPaidAt = status === RefundStatus.PAID ? new Date(paidAt as string) : undefined;
       const updated = await tx.refundRequest.update({
         where: { id },
         data: {
@@ -143,7 +293,7 @@ export class RefundRequestsService {
           processedAt: new Date(),
           rejectionNote: status === RefundStatus.REJECTED ? note : undefined,
           payoutSlipUrl: status === RefundStatus.PAID ? payoutSlipUrl : undefined,
-          paidAt: status === RefundStatus.PAID ? new Date() : undefined,
+          paidAt: actualPaidAt,
         },
       });
       await tx.refundRequestLog.create({ data: { refundRequestId: id, changedById: processedById, status, note } });
@@ -167,7 +317,7 @@ export class RefundRequestsService {
           bookingId: updated.bookingId,
           entity: 'RefundRequest',
           entityId: id,
-          metadata: { status, note: note ?? null },
+          metadata: { status, note: note ?? null, paidAt: actualPaidAt?.toISOString() ?? null },
         },
         tx,
       );

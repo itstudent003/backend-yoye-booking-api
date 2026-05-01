@@ -285,6 +285,47 @@ export class EventsService {
     return { data };
   }
 
+  async findZones(id: number) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        showRounds: {
+          orderBy: { date: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            date: true,
+            time: true,
+            zones: {
+              orderBy: { id: 'asc' },
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                fee: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    return event.showRounds.flatMap((round) =>
+      round.zones.map((zone) => ({
+        zoneId: zone.id,
+        zoneName: zone.name,
+        price: zone.price,
+        fee: zone.fee,
+        roundId: round.id,
+        roundName: round.name,
+        roundDate: round.date,
+        roundTime: round.time,
+      })),
+    );
+  }
+
   async removePresser(id: number, presserId: number, user?: AuthUser) {
     const event = await this.prisma.event.findUnique({
       where: { id },

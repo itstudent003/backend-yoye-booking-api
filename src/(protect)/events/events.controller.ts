@@ -76,6 +76,12 @@ export class EventsController {
     return this.eventsService.removePresser(+id, +presserId, req.user);
   }
 
+  @ApiOperation({ summary: 'Get ticket zones for an event' })
+  @Get(':id/zones')
+  findZones(@Param('id') id: string) {
+    return this.eventsService.findZones(+id);
+  }
+
   @ApiOperation({ summary: 'Get event by ID' })
   @Get(':id')
   findOne(@Param('id') id: string) {

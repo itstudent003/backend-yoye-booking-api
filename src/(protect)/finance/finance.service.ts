@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BookingStatus, DepositReason, DepositStatus, DepositTransactionType, PaymentSlipStatus, PaymentSlipType, Prisma, RefundStatus } from '@prisma/client';
+
+const DEPOSIT_TO_BOOKING_STATUS: Record<DepositStatus, BookingStatus> = {
+  [DepositStatus.DEPOSIT_PENDING]: BookingStatus.DEPOSIT_PENDING,
+  [DepositStatus.DEPOSIT_USED]: BookingStatus.DEPOSIT_USED,
+  [DepositStatus.DEPOSIT_FORFEITED]: BookingStatus.DEPOSIT_FORFEITED,
+  [DepositStatus.WAITING_REFUND]: BookingStatus.WAITING_REFUND,
+  [DepositStatus.REFUNDED]: BookingStatus.REFUNDED,
+};
 import { QueryFinanceDepositsDto } from './dto/query-finance-deposits.dto';
 import { QueryFinanceFeesDto } from './dto/query-finance-fees.dto';
 import { QueryFinanceRefundsDto } from './dto/query-finance-refunds.dto';
@@ -71,25 +79,52 @@ export class FinanceService {
     const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
     if (!booking) return null;
 
-    const existing = await this.prisma.depositTransaction.findFirst({ where: { bookingId, status: { not: null } }, orderBy: { createdAt: 'desc' } });
-    const payload = {
-      bookingId,
-      eventId: booking.eventId,
-      type: DepositTransactionType.HELD,
-      amount: booking.depositPaid,
-      status: data.status,
-      usedAmount: data.usedAmount ?? 0,
-      refundAmount: data.refundAmount ?? 0,
-      forfeitedAmount: data.forfeitedAmount ?? 0,
-      reason: DepositReason.ADMIN_OVERRIDE,
-      reasonNotes: data.reasonNotes,
-      decidedById: userId,
-      decidedAt: new Date(),
-    };
+    const nextBookingStatus = DEPOSIT_TO_BOOKING_STATUS[data.status];
 
-    return existing
-      ? this.prisma.depositTransaction.update({ where: { id: existing.id }, data: payload })
-      : this.prisma.depositTransaction.create({ data: payload });
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.depositTransaction.findFirst({
+        where: { bookingId, status: { not: null } },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const payload = {
+        bookingId,
+        eventId: booking.eventId,
+        type: DepositTransactionType.HELD,
+        amount: booking.depositPaid,
+        status: data.status,
+        usedAmount: data.usedAmount ?? 0,
+        refundAmount: data.refundAmount ?? 0,
+        forfeitedAmount: data.forfeitedAmount ?? 0,
+        reason: DepositReason.ADMIN_OVERRIDE,
+        reasonNotes: data.reasonNotes,
+        decidedById: userId,
+        decidedAt: new Date(),
+      };
+
+      const transaction = existing
+        ? await tx.depositTransaction.update({ where: { id: existing.id }, data: payload })
+        : await tx.depositTransaction.create({ data: payload });
+
+      // Sync booking.status so that the deposit status badge in lists reflects the change
+      if (nextBookingStatus && booking.status !== nextBookingStatus) {
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { status: nextBookingStatus },
+        });
+
+        await tx.bookingStatusLog.create({
+          data: {
+            bookingId,
+            changedBy: userId,
+            status: nextBookingStatus,
+            notes: data.reasonNotes ?? 'Deposit override',
+          },
+        });
+      }
+
+      return transaction;
+    });
   }
 
   async getDeposits(query: QueryFinanceDepositsDto) {

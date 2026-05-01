@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CreateRefundRequestDto } from '../(protect)/refund-requests/dto/create-refund-request.dto';
 import { PublicService } from './public.service';
 
@@ -19,5 +19,13 @@ export class PublicController {
   @Get('refund-requests/:bookingCode')
   getRefundRequests(@Param('bookingCode') bookingCode: string, @Query('phoneLast4') phoneLast4: string) {
     return this.publicService.getRefundRequests(bookingCode, phoneLast4);
+  }
+
+  @Patch('refund-requests/:id/account')
+  updateRejectedRefundAccount(
+    @Param('id') id: string,
+    @Body() dto: { phoneLast4: string; bankName: string; accountNumber: string; accountHolder: string; note?: string },
+  ) {
+    return this.publicService.updateRejectedRefundAccount(+id, dto);
   }
 }
