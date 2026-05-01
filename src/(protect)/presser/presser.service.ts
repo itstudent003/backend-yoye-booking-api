@@ -12,6 +12,8 @@ const ALLOWED_PRESSER_STATUSES: BookingStatus[] = [
   BookingStatus.FULLY_BOOKED,
   BookingStatus.BOOKING_FAILED,
   BookingStatus.PARTIALLY_BOOKED,
+  BookingStatus.CUSTOMER_SELF_BOOKED,
+  BookingStatus.CANCELLED,
 ];
 
 const HIDDEN_PRESSER_LIST_STATUSES: BookingStatus[] = [
@@ -210,7 +212,7 @@ export class PresserService {
         { actorId: user.id, type: ActivityType.BOOKING_STATUS_CHANGED, bookingId: id, entity: 'Booking', entityId: id, metadata: { status: dto.status, notes: dto.notes ?? null } },
         tx,
       );
-      await this.depositService.recompute(id, tx);
+      await this.depositService.recompute(id, tx, user.id, dto.status);
       return booking;
     });
   }
@@ -238,7 +240,7 @@ export class PresserService {
         { actorId: user.id, type: ActivityType.TICKET_RECORDED, bookingId: id, entity: 'BookedTicket', metadata: { count: created.length } },
         tx,
       );
-      await this.depositService.recompute(id, tx);
+      await this.depositService.recompute(id, tx, user.id);
       const response = created.map(toRecordedTicketResponse);
       return Array.isArray(input) ? response : response[0];
     });
@@ -249,7 +251,7 @@ export class PresserService {
     return this.prisma.$transaction(async (tx) => {
       await tx.bookedTicket.updateMany({ where: { bookingId: id, voidedAt: null }, data: { voidedAt: new Date(), voidedById: user.id } });
       const created = await Promise.all(tickets.map((ticket) => tx.bookedTicket.create({ data: { ...ticket, bookingId: id, pressedById: user.id } })));
-      await this.depositService.recompute(id, tx);
+      await this.depositService.recompute(id, tx, user.id);
       return created;
     });
   }
@@ -259,7 +261,7 @@ export class PresserService {
     const ticket = await this.prisma.bookedTicket.findFirst({ where: { id: ticketId, bookingId, voidedAt: null } });
     if (!ticket) throw new NotFoundException('Ticket not found');
     const updated = await this.prisma.bookedTicket.update({ where: { id: ticketId }, data: dto });
-    await this.depositService.recompute(bookingId);
+    await this.depositService.recompute(bookingId, this.prisma, user.id);
     return updated;
   }
 
@@ -268,7 +270,7 @@ export class PresserService {
     if (!ticket) throw new NotFoundException('Ticket not found');
     const updated = await this.prisma.bookedTicket.update({ where: { id: ticketId }, data: { voidedAt: new Date(), voidedById: user.id } });
     await this.activityLogService.log({ actorId: user.id, type: ActivityType.TICKET_VOIDED, bookingId, entity: 'BookedTicket', entityId: ticketId, metadata: {} });
-    await this.depositService.recompute(bookingId);
+    await this.depositService.recompute(bookingId, this.prisma, user.id);
     return updated;
   }
 

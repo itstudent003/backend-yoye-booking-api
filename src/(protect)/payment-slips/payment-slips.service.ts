@@ -97,7 +97,7 @@ export class PaymentSlipsService {
         { actorId: reviewerId, type: ActivityType.SLIP_VERIFIED, bookingId: slip.bookingId, entity: 'PaymentSlip', entityId: id, metadata: { type: slip.type } },
         tx,
       );
-      if (slip.type === PaymentSlipType.DEPOSIT_PAID) await this.depositService.recompute(slip.bookingId, tx);
+      if (slip.type === PaymentSlipType.DEPOSIT_PAID) await this.depositService.recompute(slip.bookingId, tx, reviewerId);
       return updated;
     });
   }

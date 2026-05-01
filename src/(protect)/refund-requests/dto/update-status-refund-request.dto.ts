@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { RefundStatus } from '@prisma/client';
+import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import { RefundCategory, RefundStatus } from '@prisma/client';
+import { Type } from 'class-transformer';
 
 export class UpdateStatusRefundRequestDto {
   @ApiProperty({ enum: RefundStatus })
@@ -22,4 +23,30 @@ export class UpdateStatusRefundRequestDto {
   @IsOptional()
   @IsDateString()
   paidAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  amount?: number;
+
+  @ApiPropertyOptional({ enum: RefundCategory })
+  @IsOptional()
+  @IsEnum(RefundCategory)
+  category?: RefundCategory;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  breakdown?: Record<string, number>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  payoutReference?: string;
 }

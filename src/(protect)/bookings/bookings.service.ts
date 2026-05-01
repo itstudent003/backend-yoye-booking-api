@@ -280,7 +280,7 @@ export class BookingsService {
           },
           tx,
         );
-        await this.depositService.recompute(id, tx);
+        await this.depositService.recompute(id, tx, user.id, dto.status);
       }
 
       return booking;

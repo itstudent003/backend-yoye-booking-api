@@ -4,15 +4,18 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { join } from 'node:path';
+import { json, urlencoded } from 'express';
 import * as cookieParser from 'cookie-parser';
 import { ResponseInterceptor } from './(protect)/common/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './(protect)/common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   app.useStaticAssets(join(__dirname, '..', 'public'));
   app.useStaticAssets(join(process.cwd(), 'image'), { prefix: '/image' });
 
+  app.use(json({ limit: '15mb' }));
+  app.use(urlencoded({ extended: true, limit: '15mb' }));
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

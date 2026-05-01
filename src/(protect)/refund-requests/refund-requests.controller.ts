@@ -68,6 +68,6 @@ export class RefundRequestsController {
     @Request() req: { user: AuthUser },
     @Body() dto: UpdateStatusRefundRequestDto,
   ) {
-    return this.refundRequestsService.updateStatus(+id, dto.status, req.user.id, dto.note, dto.payoutSlipUrl, dto.paidAt);
+    return this.refundRequestsService.updateStatus(+id, dto, req.user.id);
   }
 }

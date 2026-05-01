@@ -4,6 +4,9 @@ import { CreateRefundRequestDto } from './dto/create-refund-request.dto';
 import { BookingStatus, PaymentSlipStatus, PaymentSlipType, Prisma, RefundCategory, RefundStatus } from '@prisma/client';
 import { QueryRefundRequestDto } from './dto/query-refund-request.dto';
 import { ActivityLogService } from '../common/services/activity-log.service';
+import { UpdateStatusRefundRequestDto } from './dto/update-status-refund-request.dto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const ACTIVITY_TYPE = {
   REFUND_APPROVED: 'REFUND_APPROVED',
@@ -61,6 +64,18 @@ function categoryFromBreakdown(breakdown: RefundBreakdown): RefundCategory {
   if (key === 'priceDiff') return RefundCategory.PRICE_DIFF;
   if (key === 'shipping') return RefundCategory.SHIPPING;
   return RefundCategory.MIXED;
+}
+
+function saveRefundSlipIfBase64(value?: string) {
+  if (!value?.startsWith('data:image/')) return value;
+  const matches = value.match(/^data:image\/(\w+);base64,(.+)$/s);
+  if (!matches) return value;
+  const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+  const uploadPath = join(process.cwd(), 'image', 'upload', 'refunds');
+  mkdirSync(uploadPath, { recursive: true });
+  const filename = `refund-${Date.now()}-${Math.round(Math.random() * 1e6)}.${ext}`;
+  writeFileSync(join(uploadPath, filename), Buffer.from(matches[2], 'base64'));
+  return `image/upload/refunds/${filename}`;
 }
 
 @Injectable()
@@ -213,6 +228,11 @@ export class RefundRequestsService {
         },
       },
       processedBy: { select: { id: true, firstName: true, lastName: true } },
+      statusLogs: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 5,
+        select: { id: true, status: true, note: true, createdAt: true },
+      },
     };
 
     if (!isPaginated) {
@@ -262,19 +282,28 @@ export class RefundRequestsService {
       include: {
         booking: { select: { id: true, bookingCode: true } },
         processedBy: { select: { id: true, firstName: true, lastName: true } },
+        statusLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { id: true, status: true, note: true, createdAt: true },
+        },
       },
     });
     if (!refund) throw new NotFoundException('Refund request not found');
     return refund;
   }
 
-  async updateStatus(id: number, status: RefundStatus, processedById: number, note?: string, payoutSlipUrl?: string, paidAt?: string) {
+  async updateStatus(id: number, dto: UpdateStatusRefundRequestDto, processedById: number) {
+    const { status, note, payoutSlipUrl, paidAt, amount, category, breakdown: rawBreakdown, reason, payoutReference } = dto;
     const refund = await this.findOne(id);
     if (refund.status === RefundStatus.PAID || refund.status === RefundStatus.REJECTED) {
       throw new BadRequestException('Refund request is already terminal');
     }
-    if (refund.status === RefundStatus.REQUESTED && !([RefundStatus.APPROVED, RefundStatus.REJECTED] as RefundStatus[]).includes(status)) {
-      throw new BadRequestException('REQUESTED can transition only to APPROVED or REJECTED');
+    if (
+      refund.status === RefundStatus.REQUESTED &&
+      !([RefundStatus.APPROVED, RefundStatus.REJECTED, RefundStatus.PAID] as RefundStatus[]).includes(status)
+    ) {
+      throw new BadRequestException('REQUESTED can transition only to APPROVED, PAID or REJECTED');
     }
     if (refund.status === RefundStatus.APPROVED && !([RefundStatus.PAID, RefundStatus.REJECTED] as RefundStatus[]).includes(status)) {
       throw new BadRequestException('APPROVED can transition only to PAID or REJECTED');
@@ -285,18 +314,27 @@ export class RefundRequestsService {
 
     return this.prisma.$transaction(async (tx) => {
       const actualPaidAt = status === RefundStatus.PAID ? new Date(paidAt as string) : undefined;
+      const normalizedBreakdown = rawBreakdown ? normalizeBreakdown(rawBreakdown) : undefined;
+      const breakdownTotal = normalizedBreakdown ? sumBreakdown(normalizedBreakdown) : 0;
+      const finalAmount = amount !== undefined ? normalizeMoney(amount) : breakdownTotal > 0 ? breakdownTotal : undefined;
+      const finalSlipUrl = status === RefundStatus.PAID ? saveRefundSlipIfBase64(payoutSlipUrl) : undefined;
+      const finalNote = [note, payoutReference ? `เลขอ้างอิงสลิป: ${payoutReference}` : ''].filter(Boolean).join('\n');
       const updated = await tx.refundRequest.update({
         where: { id },
         data: {
           status,
           processedById,
           processedAt: new Date(),
-          rejectionNote: status === RefundStatus.REJECTED ? note : undefined,
-          payoutSlipUrl: status === RefundStatus.PAID ? payoutSlipUrl : undefined,
+          amount: finalAmount,
+          category,
+          breakdown: normalizedBreakdown,
+          reason,
+          rejectionNote: status === RefundStatus.REJECTED ? finalNote : undefined,
+          payoutSlipUrl: finalSlipUrl,
           paidAt: actualPaidAt,
         },
       });
-      await tx.refundRequestLog.create({ data: { refundRequestId: id, changedById: processedById, status, note } });
+      await tx.refundRequestLog.create({ data: { refundRequestId: id, changedById: processedById, status, note: finalNote || undefined } });
 
       const updatedCategory = (updated as { category?: string }).category;
       if (status === RefundStatus.PAID && updatedCategory === REFUND_CATEGORY.DEPOSIT) {
@@ -317,7 +355,7 @@ export class RefundRequestsService {
           bookingId: updated.bookingId,
           entity: 'RefundRequest',
           entityId: id,
-          metadata: { status, note: note ?? null, paidAt: actualPaidAt?.toISOString() ?? null },
+          metadata: { status, note: finalNote || null, paidAt: actualPaidAt?.toISOString() ?? null, payoutReference: payoutReference ?? null },
         },
         tx,
       );
