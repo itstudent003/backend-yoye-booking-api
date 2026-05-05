@@ -227,7 +227,7 @@ export class PresserService {
             data: {
               bookingId: id,
               zoneId: ticket.zoneId,
-              zoneNameRaw: ticket.zoneNameRaw,
+              zoneNameRaw: ticket.zoneNameRaw ?? ticket.zoneName ?? '',
               seat: ticket.seat,
               price: ticket.price,
               pressedById: user.id,
@@ -250,7 +250,18 @@ export class PresserService {
     await this.assertCanAccess(id, user);
     return this.prisma.$transaction(async (tx) => {
       await tx.bookedTicket.updateMany({ where: { bookingId: id, voidedAt: null }, data: { voidedAt: new Date(), voidedById: user.id } });
-      const created = await Promise.all(tickets.map((ticket) => tx.bookedTicket.create({ data: { ...ticket, bookingId: id, pressedById: user.id } })));
+      const created = await Promise.all(
+        tickets.map(({ roundId: _roundId, zoneName, ...ticket }) =>
+          tx.bookedTicket.create({
+            data: {
+              ...ticket,
+              zoneNameRaw: ticket.zoneNameRaw ?? zoneName ?? '',
+              bookingId: id,
+              pressedById: user.id,
+            },
+          }),
+        ),
+      );
       await this.depositService.recompute(id, tx, user.id);
       return created;
     });
@@ -260,7 +271,14 @@ export class PresserService {
     await this.assertCanAccess(bookingId, user);
     const ticket = await this.prisma.bookedTicket.findFirst({ where: { id: ticketId, bookingId, voidedAt: null } });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    const updated = await this.prisma.bookedTicket.update({ where: { id: ticketId }, data: dto });
+    const { roundId: _roundId, zoneName, ...ticketData } = dto;
+    const updated = await this.prisma.bookedTicket.update({
+      where: { id: ticketId },
+      data: {
+        ...ticketData,
+        ...(zoneName && !ticketData.zoneNameRaw ? { zoneNameRaw: zoneName } : {}),
+      },
+    });
     await this.depositService.recompute(bookingId, this.prisma, user.id);
     return updated;
   }
